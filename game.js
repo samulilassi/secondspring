@@ -70,6 +70,7 @@ The Great Greening|35|Bio Science|B|Tco Tso Twe V6|soil air`.split('\n').map(l=>
 const D=[[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
 const shuf=a=>a.map(x=>[Math.random(),x]).sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+let ME=0,NET=null,BOARD=null,PICKUI=false,RUNNING=false; // ME = your seat in the game (0 in solo); NET = online lobby connection
 let G,AC,MG,NAME=localStorage.ss_name||'',vol=+(localStorage.ss_vol??.15);const KV=.87,U=.22563,FY=129*U/46.5*KV,RI={cr:'Cr',sa:'Fe',re:'Re',se:'Sd',fc:'Fc',bc:'C'};
 
 /* ---------- SOUND (synthesised, no files needed) ---------- */
@@ -116,12 +117,12 @@ $('#app').innerHTML=`<div id="stage"><div id="mist"></div><svg id="bd" viewBox="
 /* ---------- RULES ---------- */
 const nb=c=>D.map(d=>G.map[(c.q+d[0])+','+(c.r+d[1])]).filter(Boolean);
 const valid=t=>{const v=G.cells.filter(c=>t=='r'?c.t=='R':!c.t);if(t=='c'){const w=v.filter(c=>nb(c).some(n=>n.t=='f'));if(w.length)return w}return v};
-const busy=()=>!G||G.pend.length>0||G.bot||G.over;
+const busy=()=>!G||G.phase!=='play'||G.pend.length>0||G.cur!==ME||G.over;
 const cost=(p,cd)=>Math.max(0,cd.c-(p.c.n[0]=='M'&&cd.f.includes('Lp')?4:0));
 const score=p=>p.tr+p.vp+G.cells.reduce((s,c)=>c.o===p.i?s+(c.t=='s'?nb(c).filter(n=>n.t=='f'||n.t=='w').length:c.t=='c'?nb(c).filter(n=>n.t=='f'||n.t=='w').length:0):s,0);
 const over=()=>G.t.co==0&&G.t.so>=14&&G.t.we>=9;
 const log=s=>{G.log.unshift(s);G.log.length=Math.min(G.log.length,3)};
-const draw=(p,n)=>{const h=p.hand.length;while(n--&&p.deck.length)p.hand.push(p.deck.pop());if(!p.bot&&G&&G.ps[0]===p)deckAnim(p.hand.length-h)};
+const draw=(p,n)=>{const h=p.hand.length;while(n--&&p.deck.length)p.hand.push(p.deck.pop());if(!p.bot&&G&&G.ps[ME]===p)deckAnim(p.hand.length-h)};
 const canAct=(p,id)=>{const l=CARDS[id].f.find(t=>t[0]=='A').slice(1).split('/')[0];return p.res[l.slice(0,2)]>=+l.slice(2)};
 function pay(p,cd,go){let n=cost(p,cd);const u={};const use=(r,v)=>{if(n<=0)return;const k=Math.min(p.res[r],Math.ceil(n/v));u[r]=k;n-=k*v};
  for(const k of cd.s){const y=SYN[k];if(y&&y.pay)use(y.pay,y.v)}if(p.c.n[0]=='V'&&cd.t.includes('Bio'))use('se',2);
@@ -174,51 +175,104 @@ async function botTurn(p){const g=G;
 
 /* ---------- GAME FLOW ---------- */
 let NB=3;
-function mk(i,ci,bot){const c=CORPS[ci],p={i,c,bot,tr:10,vp:0,hand:[],tab:[],used:[],
+function mk(i,ci,bot,name){const c=CORPS[ci],p={i,ci,c,bot,name:name||'',tr:10,vp:0,hand:[],tab:[],used:[],
  res:{cr:c.cr,sa:0,re:0,se:0,fc:0,bc:0,...c.st},pr:{cr:0,sa:0,re:0,se:0,fc:0,bc:0,...c.pr}};
  p.deck=shuf(CARDS.map((_,k)=>k));draw(p,5);return p}
 const modal=h=>{const m=$('#modal');m.onclick=null;m.innerHTML=h;m.hidden=false},closeModal=()=>{$('#modal').hidden=true};
 const chips=c=>[`<b>${c.cr}</b> Credits`,...Object.entries(c.st||{}).map(([k,v])=>`<b>${v}</b> ${R[k]}`),...Object.entries(c.pr||{}).map(([k,v])=>`<b>+${v}</b> ${R[k]} prod`)].map(x=>`<span>${x}</span>`).join('');
-function start(nb,code){au();G={code,nb,gen:1,t:{co:14,so:0,we:0},pend:[],log:[],cells:[],map:{},ps:[],bot:false,over:false,cur:null,offer:shuf([0,1,2,3,4,5]).slice(0,3)};
+/* names = the people in the game (seats 0,1,...); bots take the seats after them */
+function start(nb,code,names){au();names=names&&names.length?names:[myName()];
+ G={code,nb,gen:1,t:{co:14,so:0,we:0},pend:[],log:[],cells:[],map:{},ps:[],over:false,cur:null,ti:0,phase:'pick',
+  seats:[...names.map(n=>({name:n,bot:false})),...Array.from({length:nb},()=>({name:'',bot:true}))],pick:0,taken:[],offer:shuf([0,1,2,3,4,5]).slice(0,3)};
  for(let r=-4;r<=4;r++)for(let q=Math.max(-4,-r-4);q<=Math.min(4,-r+4);q++){const c={id:G.cells.length,q,r,x:31*1.732*(q+r/2),y:31*1.5*r*FY,t:null};G.cells.push(c);G.map[q+','+r]=c}
  shuf(G.cells).slice(0,8).forEach(c=>c.t='R');
- const poly=(rad,dy=0)=>[0,1,2,3,4,5].map(i=>{const a=Math.PI/180*(60*i-30);return(rad*Math.cos(a)).toFixed(1)+','+(rad*Math.sin(a)*FY+dy).toFixed(1)}).join(' ');
+ buildBoard();document.body.className='picking';pickScreen();share()}
+function buildBoard(){
  const P=[[0,-91.5],[119,-37.5],[119,37.5],[0,91.5],[-119,37.5],[-119,-37.5]].map(v=>(v[0]*U).toFixed(2)+','+(v[1]*U*KV).toFixed(2)).join(' ');
  if(!document.getElementById('ti-blank'))document.querySelector('#bd defs').insertAdjacentHTML('beforeend',Object.keys(TILEDATA).map(n=>`<image id="ti-${n}" href="${TILEDATA[n]}" x="${TG.x}" y="${TG.y}" width="${TG.w}" height="${TG.h}"/>`).join(''));
  $('#cells').innerHTML=G.cells.map(c=>`<g id="h${c.id}" class="cell" transform="translate(${c.x},${c.y})" onclick="clk(${c.id})"><title></title><polygon class="hx" points="${P}"/><g class="tl"></g><polygon class="hl" points="${P}" fill="url(#stp)"/><polygon class="hb" points="${P}"/></g>`).join('');
- G.cells.forEach(drawCell);$('#lob').hidden=true;$('#set').hidden=true;document.body.className='picking';showPick()}
+ G.cells.forEach(c=>{delete c.dk;drawCell(c)});BOARD=G.code;$('#lob').hidden=true;$('#set').hidden=true}
+/* corporation choice: people choose one after another (seat 0 first), then bots get the corporations that are left */
+function pickScreen(){PICKUI=true;if(G.pick===ME)showPick();
+ else modal(`<div class="pickp"><h2>Choose your corporation</h2><p>Waiting for <b>${esc(G.seats[G.pick].name)}</b> to choose a corporation…</p></div>`)}
 function showPick(){modal(`<div class="pickp"><h2>Choose your corporation</h2><p>Three charters were offered to you. The other corporations go to your rivals.</p><div class="cards3">${G.offer.map(ci=>{const c=CORPS[ci];return corpCardHTML(c,ci)}).join('')}</div></div>`)}
-function choose(ci){const rest=shuf([0,1,2,3,4,5].filter(i=>i!=ci));G.ps=[mk(0,ci,false),...rest.slice(0,G.nb).map((x,i)=>mk(i+1,x,true))];
- document.body.className='';closeModal();log('Generation 1 begins');sfx('card');render();deckAnim(5)}
+function choose(ci){if(!G||G.phase!=='pick'||G.pick!==ME||!G.offer.includes(ci))return;
+ const s=G.pick,humans=G.seats.filter(x=>!x.bot).length;G.ps[s]=mk(s,ci,false,G.seats[s].name);G.taken.push(ci);G.pick++;
+ if(G.pick<humans){G.offer=shuf([0,1,2,3,4,5].filter(i=>!G.taken.includes(i))).slice(0,3);pickScreen();share();return}
+ const rest=shuf([0,1,2,3,4,5].filter(i=>!G.taken.includes(i)));
+ for(let i=humans;i<G.seats.length;i++)G.ps[i]=mk(i,rest[i-humans],true);
+ G.phase='play';G.ti=0;G.cur=order()[0].i;PICKUI=false;
+ document.body.className='';closeModal();log('Generation 1 begins');sfx('card');render();deckAnim(5);runBots()}
 function adv(){while(G.pend.length&&!valid(G.pend[0]).length)G.pend.shift();render()}
-function clk(i){if(!G||G.bot||G.over||!G.pend.length)return;const c=G.cells[i],t=G.pend[0];if(!valid(t).includes(c))return;G.pend.shift();place(G.ps[0],c,t);adv()}
-function uiPlay(i){if(busy())return;const p=G.ps[0];if(!pay(p,CARDS[p.hand[i]],0))return sfx('err');play(p,i);adv()}
-function uiAct(id){if(busy())return;act(G.ps[0],id);render()}
-function std(k){if(busy())return;const p=G.ps[0];if(STD[k].ok(p)){STD[k].go(p);adv()}else sfx('err')}
-async function nextGen(){if(busy())return;const g=G;G.bot=true;render();
- for(const p of G.ps)if(p.bot){G.cur=p.i;render();await botTurn(p);if(G!==g)return}
- G.cur=null;
- for(const p of G.ps){const r=p.res;r.bc+=r.fc;r.fc=0;r.cr+=p.tr+p.pr.cr;for(const k of['sa','re','se','fc','bc'])r[k]=Math.max(0,r[k]+p.pr[k]);p.used=[];draw(p,3)}
- G.gen++;G.bot=false;log(`Generation ${G.gen} begins`);sfx('gen');render();if(over()||G.gen>15)fin()}
-function fin(){G.over=true;const r=[...G.ps].sort((a,b)=>score(b)-score(a));
- modal(`<div class="pickp"><h2>${r[0].bot?'The world greens without you':'The spring is yours'}</h2><p>CO₂ ${G.t.co} · Soil ${G.t.so}% · Wetlands ${G.t.we}/9</p><ol class="rank">${r.map(p=>`<li style="--c:${PC[p.i]}">${mono(p.c)}<b>${p.c.n}</b>${p.bot?'':`<small>${esc(myName())}</small>`}<span class="vp"><b>${score(p)}</b> VP</span></li>`).join('')}</ol><button class="pri" onclick="lobby()">Back to lobby</button></div>`)}
+function clk(i){if(!G||G.phase!=='play'||G.cur!==ME||G.over||!G.pend.length)return;const c=G.cells[i],t=G.pend[0];if(!valid(t).includes(c))return;G.pend.shift();place(G.ps[ME],c,t);adv()}
+function uiPlay(i){if(busy())return;const p=G.ps[ME];if(!pay(p,CARDS[p.hand[i]],0))return sfx('err');play(p,i);adv()}
+function uiAct(id){if(busy())return;act(G.ps[ME],id);render()}
+function std(k){if(busy())return;const p=G.ps[ME];if(STD[k].ok(p)){STD[k].go(p);adv()}else sfx('err')}
+/* turn order rotates: generation 1 starts with player 0 (you), generation 2 with the next player, and so on */
+const order=()=>{const n=G.ps.length,s=(G.gen-1)%n;return G.ps.map((_,i)=>G.ps[(s+i)%n])};
+const pname=p=>p.bot?p.c.n.split(' ')[0]:p.name||myName();
+function income(){for(const p of G.ps){const r=p.res;r.bc+=r.fc;r.fc=0;r.cr+=p.tr+p.pr.cr;for(const k of['sa','re','se','fc','bc'])r[k]=Math.max(0,r[k]+p.pr[k]);p.used=[];draw(p,3)}
+ G.gen++;log(`Generation ${G.gen} begins`);sfx('gen')}
+/* pass the turn to the next player; after the last one, income arrives and a new generation starts. Returns false when the game ends */
+function nextSeat(){G.ti++;
+ if(G.ti>=G.ps.length){income();if(over()||G.gen>15){G.cur=null;render();fin();return false}G.ti=0;log(`${pname(order()[0])} starts generation ${G.gen}`)}
+ G.cur=order()[G.ti].i;return true}
+/* holding the seal ends your turn */
+async function nextGen(){if(busy())return;if(!nextSeat())return;render();await runBots()}
+/* bots are played by the host's browser (in solo: yours) */
+async function runBots(){if(RUNNING||!G||G.over||G.phase!=='play'||(NET&&NET.seat!==0))return;const g=G;RUNNING=true;
+ try{while(G===g&&!G.over&&G.ps[G.cur].bot){render();await botTurn(G.ps[G.cur]);if(G!==g)return;if(!nextSeat())return;render()}}finally{RUNNING=false}
+ if(G===g&&!G.over&&over())fin()}
+function fin(){G.over=true;const r=[...G.ps].sort((a,b)=>score(b)-score(a));share();
+ modal(`<div class="pickp"><h2>${r[0].i===ME?'The spring is yours':r[0].bot?'The world greens without you':esc(r[0].name)+' takes the spring'}</h2><p>CO₂ ${G.t.co} · Soil ${G.t.so}% · Wetlands ${G.t.we}/9</p><ol class="rank">${r.map(p=>`<li style="--c:${PC[p.i]}">${mono(p.c)}<b>${p.c.n}</b>${p.bot?'':`<small>${esc(p.name||myName())}</small>`}<span class="vp"><b>${score(p)}</b> VP</span></li>`).join('')}</ol><button class="pri" onclick="lobby()">Back to lobby</button></div>`)}
 
 /* ---------- LOBBY (local demo: lobbies are stored in this browser) ---------- */
 const esc=s=>String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])),myName=()=>NAME.trim()||'You';
 function setName(v){NAME=v.slice(0,16);try{localStorage.ss_name=NAME}catch(e){}}
-const rooms=()=>JSON.parse(localStorage.ss_rooms||'{}');
 function setNb(n){NB=n;document.querySelectorAll('#nbseg button').forEach(b=>b.classList.toggle('on',+b.dataset.n==n))}
 const BRAND=`${LOGO.replace('width="40" height="40"','width="56" height="56"')}<div><h1>Second Spring</h1><small>The returning world</small></div>`;
-function lobby(){G=null;document.body.className='lobby';closeModal();$('#set').hidden=true;$('#lob').hidden=false;
+function lobby(){netStop();G=null;BOARD=null;document.body.className='lobby';closeModal();$('#set').hidden=true;$('#lob').hidden=false;
  $('#lob').innerHTML=`<div class="lobp panel"><div class="brand"><img class="blogo" src="ui/logo.png" alt="Second Spring" width="250" style="width:250px;max-width:70%;height:auto;display:block;margin:0 auto" onerror="this.parentNode.innerHTML=BRAND"><small>The returning world</small></div>
  <div class="rowl"><span>Your name</span><input class="nin" id="pname" maxlength="16" placeholder="Player" aria-label="Your name" value="${esc(NAME)}" oninput="setName(this.value)"></div>
  <div class="rowl"><span>Rival bots</span><div class="segb" id="nbseg">${[1,2,3].map(n=>`<button data-n="${n}" onclick="setNb(${n})">${n}</button>`).join('')}</div></div>
  <div class="modes"><section><h2>Solo</h2><p>Restore the world on your own against bot corporations.</p><button class="pri" onclick="start(NB,'SOLO')">Play solo</button></section>
  <section><h2>Lobby</h2><p>Host a lobby and share its code, or join one.</p><button onclick="mkRoom()">Host a lobby</button><div class="join"><input id="jc" maxlength="5" placeholder="CODE" aria-label="Lobby code" onkeydown="if(event.key=='Enter')joinRoom()"><button onclick="joinRoom()">Join</button></div><div id="lm"></div></section></div></div>`;setNb(NB)}
-function mkRoom(){au();const code=Array.from({length:5},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.random()*32|0]).join(''),r=rooms();r[code]={nb:NB};localStorage.ss_rooms=JSON.stringify(r);
- $('#lm').innerHTML=`<div class="code"><span>${code}</span><button onclick="navigator.clipboard&&navigator.clipboard.writeText('${code}')">Copy</button></div><button class="pri" onclick="go('${code}')">Start game</button><small>Online players arrive with the server version. For now a code works in this browser.</small>`}
-function joinRoom(){au();const c=$('#jc').value.trim().toUpperCase();if(rooms()[c])go(c);else $('#lm').innerHTML='<small>Lobby not found. Check the code and try again.</small>'}
-function go(code){start(rooms()[code].nb,code)}
+/* ---------- ONLINE LOBBIES (needs server.py) ---------- */
+const api=async(path,body)=>{const r=await fetch('api/'+path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{cache:'no-store'});
+ const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Server error'),{status:r.status});return j};
+const NOSRV='Online lobbies need the game server. Start it with <b>py server.py</b> in the game folder and open the game from it. Solo works anywhere.';
+async function mkRoom(){au();try{netStart(await api('room',{name:myName(),bots:NB}))}catch(e){$('#lm').innerHTML=`<small>${e.status?esc(e.message):NOSRV}</small>`}}
+async function joinRoom(){au();const c=$('#jc').value.trim().toUpperCase();if(!c)return;
+ try{netStart(await api('join',{code:c,name:myName()}))}catch(e){$('#lm').innerHTML=`<small>${e.status?esc(e.message):NOSRV}</small>`}}
+function netStart(r){netStop();NET={code:r.code,token:r.token,seat:r.seat,v:0,status:'open',players:r.players||[],bots:r.bots||0,q:Promise.resolve(),busy:0,last:'',timer:0};ME=r.seat;lobbyRoom();NET.timer=setTimeout(poll,600)}
+function netStop(){if(NET)clearTimeout(NET.timer);NET=null;ME=0}
+function netLeave(){netStop();lobby()}
+function lobbyRoom(){if(!NET||NET.status!=='open'||!$('#lm'))return;const host=NET.seat===0,nb=Math.min(NET.bots,4-NET.players.length);
+ $('#lm').innerHTML=`<div class="code"><span>${NET.code}</span><button onclick="navigator.clipboard&&navigator.clipboard.writeText('${NET.code}')">Copy</button></div>
+ <small>Players ${NET.players.length}/4: ${NET.players.map((n,i)=>`<b>${esc(n)}</b>${i===NET.seat?' (you)':''}`).join(', ')}${nb?` · plus ${nb} bot${nb>1?'s':''}`:''}</small>
+ ${host?`<button class="pri" onclick="hostStart()">Start game</button>`:'<small>Waiting for the host to start…</small>'}<button onclick="netLeave()">Leave lobby</button>`}
+function hostStart(){if(!NET||NET.seat!==0||NET.status!=='open')return;clearTimeout(NET.timer);
+ start(Math.min(NET.bots,4-NET.players.length),NET.code,NET.players);NET.status='playing';const s=ser();NET.last=s;NET.busy++;
+ NET.q=NET.q.then(async()=>{try{NET.v=(await api('start',{code:NET.code,token:NET.token,state:s})).v}catch(e){}finally{if(NET){NET.busy--;NET.timer=setTimeout(poll,900)}}})}
+/* the game is saved to the server as text after every move; only the player whose turn it is (or the host, for bots) writes */
+const ser=()=>JSON.stringify({...G,map:undefined,cells:G.cells.map(({dk,...c})=>c),ps:G.ps.map(p=>{if(!p)return null;const{c,...r}=p;return r})});
+function hydrate(t){const o=JSON.parse(t),old=G&&G.code===o.code?G.cells:null;o.map={};
+ o.cells.forEach(c=>{o.map[c.q+','+c.r]=c;if(old&&old[c.id])c.dk=old[c.id].dk});o.ps=o.ps.map(p=>p?Object.assign(p,{c:CORPS[p.ci]}):p);return o}
+function share(){if(!NET||NET.status!=='playing'||NET.applying||!G)return;const s=ser();if(s===NET.last)return;NET.last=s;NET.busy++;const n=NET;
+ n.q=n.q.then(async()=>{try{n.v=(await api('state',{code:n.code,token:n.token,base:n.v,state:s})).v}catch(e){if(e.status===409)n.v=0}finally{n.busy--}})}
+async function poll(){const n=NET;if(!n)return;
+ try{const r=await api(`room?code=${n.code}&token=${encodeURIComponent(n.token)}&v=${n.v}`);if(NET!==n)return;
+  n.players=r.players;n.bots=r.bots;if(r.status==='open'){lobbyRoom();return}
+  if(r.state&&r.v>n.v&&!n.busy){n.v=r.v;n.status='playing';applyState(r.state)}}
+ catch(e){if(NET===n&&(e.status===404||e.status===403)){lobby();$('#lm').innerHTML='<small>The lobby has closed.</small>';return}}
+ finally{if(NET===n)n.timer=setTimeout(poll,900)}}
+function applyState(t){const was=G;NET.applying=true;
+ try{G=hydrate(t);if(BOARD!==G.code){au();buildBoard()}else G.cells.forEach(drawCell);NET.last=ser();
+  if(G.phase==='pick'){document.body.className='picking';pickScreen();return}
+  if(PICKUI){PICKUI=false;closeModal()}document.body.className='';render();
+  if(G.over){if(!was||!was.over)fin();return}}
+ finally{if(NET)NET.applying=false}
+ runBots()}
 function setp(){const s=$('#set');s.hidden=!s.hidden;fillSet()}
 function fillSet(){$('#set').innerHTML=`<b>Settings</b><label>Music volume <span id="vl">${Math.round(vol*100)}%</span><input type="range" min="0" max="100" value="${Math.round(vol*100)}" oninput="setVol(this.value)"></label><button onclick="help()">How to play</button><button onclick="lobby()">Leave to lobby</button><small>Lobby code: ${G?G.code:'-'}</small>`}
 function help(){$('#set').hidden=true;
@@ -230,26 +284,26 @@ function help(){$('#set').hidden=true;
  step=(n,t,x)=>`<div class="hstp"><i>${n}</i><div><b>${t}</b><span class="ht">${x}</span></div></div>`,
  sec=(t,b,n)=>`<section class="hs"><h3>${t}</h3>${n?`<p class="hn">${n}</p>`:''}${b}</section>`,
  ty=(c,n,x)=>`<span class="hty" style="--t:${c}"><b>${n}</b> ${x}</span>`;
- const goal=sec('The goal',`<div class="hgl"><div class="hg">${tIcon('co')}<b>14 → 0</b><small>CO₂ (tonnes)</small></div><div class="hg">${tIcon('so')}<b>0 → 14%</b><small>Soil</small></div><div class="hg">${tIcon('we')}<b>0 → 9</b><small>Wetlands</small></div></div>`,'Heal the world. Each track step is <b>+1 TR</b> (terraform rating). The game ends when all three are full or generation 15 ends. <b>Highest score wins.</b>'),
+ const goal=sec('The goal',`<div class="hgl"><div class="hg">${tIcon('co')}<b>14 → 0</b><small>CO₂ (tonnes)</small></div><div class="hg">${tIcon('so')}<b>0 → 14%</b><small>Soil</small></div><div class="hg">${tIcon('we')}<b>0 → 9</b><small>Wetlands</small></div></div>`,'Heal the world. Each track step is <b>+1</b> {TR} (terraform rating). The game ends when all three are full or generation 15 ends. <b>Highest score wins.</b>'),
  path=sec('Path to victory',
-  step(1,'Build your engine','Play cheap Build cards that add production, the boxed numbers. Income = your TR + Credit production.')
- +step(2,'Turn income into progress','Spend Seeds on Forests, Biochar on Soil, Credits on Wetlands. Each step is +1 TR, and TR is VP.')
+  step(1,'Build your engine','Play cheap Build cards that add production, the boxed numbers. Income = your {TR} + Credit production.')
+ +step(2,'Turn income into progress','Spend Seeds on Forests, Biochar on Soil, Credits on Wetlands. Each step is +1 {TR}, and {TR} is {VP}.')
  +step(3,'Claim the board','Settle beside Forests and Wetlands, and put Wildlife Corridors by Forests. These tiles score as the world greens.')
  +step(4,'Finish ahead','Full tracks end the game. Close it out while you lead, before generation 15 ends.')),
  loop=sec('Each generation',
   step(1,'Act','Play cards, use card Actions and standard projects, in any order. When a tile is due, click a glowing hex.')
  +step(2,'Hold <span class="hnx">Next generation</span>','Your rivals take their turns.')
- +step(3,'Income arrives','Credits = TR + Credit production. Other resources arrive as produced. Fusion Cells turn into Biochar. You draw 3 cards.')),
- vp=sec('Every way to score VP',
-  row('<span class="trb">TR</span>','Terraform rating',`Starts at 10. +1 for each step on ${I.co}${I.so}${I.we}`,'1 VP per TR')
- +row(`<span class="hcard">2 VP</span>`,'Cards with VP','A card showing <b>N VP</b> adds N once played.','as shown')
+ +step(3,'Income arrives','Credits = {TR} + Credit production. Other resources arrive as produced. Fusion Cells turn into Biochar. You draw 3 cards.')),
+ vp=sec('Every way to score {VP}',
+  row('<span class="trb">TR</span>','Terraform rating',`Starts at 10. +1 for each step on ${I.co}${I.so}${I.we}`,'1 {VP} per {TR}')
+ +row(`{VPL:2}`,'Cards with {VP}','A card showing {VP:3} adds 3 once played.','as shown')
  +row(hx('settlement'),'Settlements','Scores for every Forest or Wetland touching it.','1 per neighbour')
  +row(hx('corridor'),'Wildlife Corridors','Score for every Forest or Wetland touching one you own.','1 per neighbour'),'Your score is the sum of these four:'),
  tiles=sec('Tiles',
-  row(hx('forest'),'Forest',`${I.co} −1 and +1 TR. Next to a Wetland: +2 ${rc('se')}.`)
- +row(hx('wetland'),'Wetland',`${I.we} +1 and +1 TR.`)
+  row(hx('forest'),'Forest',`${I.co} −1 and +1 {TR}. Next to a Wetland: +2 ${rc('se')}.`)
+ +row(hx('wetland'),'Wetland',`${I.we} +1 and +1 {TR}.`)
  +row(hx('power'),'Fusion Plant',`${efR('+',1,'fc',1)} a production boost. Next to a Settlement: +1 ${rc('cr')} production too.`)
- +row(hx('settlement'),'Settlement','Scores VP from its neighbours.')
+ +row(hx('settlement'),'Settlement','Scores {VP} from its neighbours.')
  +row(hx('corridor'),'Wildlife Corridor','Must touch a Forest if a free hex beside one exists.')
  +row(hx('ruin'),'Ruin',`Blocks its hex. Clear it for +3 ${rc('sa')}, then build there.`)),
  res=sec('Resources',
@@ -260,11 +314,11 @@ function help(){$('#set').hidden=true;
  +row(rc('fc'),'Fusion Cells','Become Biochar when the generation ends.')
  +row(rc('bc'),'Biochar','8 raise Soil by 1.'),'Your corporation bends one rule: hover its panel.'),
  card=sec('Reading a card',
-  `<div class="hlg">${cell('<span class="hix">12</span>','Cost','In Credits. Matching resources can pay part.')}${cell(efR('+',2,'cr',1),'Boxed','Production: arrives every generation.')}${cell(`<span style="--c:${RCOL.sa}">${efR('+',3,'sa',0)}</span>`,'Plain','A gain: arrives when you play the card.')}${cell(`<span class="ef"><span class="n">−</span>${tIcon('co')}</span><span class="ef"><span class="n">+</span>${tIcon('so')}</span><span class="ef"><span class="n">+</span>${tIcon('we')}</span>`,'Track step','Moves a track one step: +1 TR.')}${cell(`<span class="ef"><span class="n">+2</span>${CARDIC}</span>`,'Draw','Take cards from your deck.')}${cell(`<span class="ef"><span class="n">2</span><span class="tx">VP</span></span>`,'Victory points','Counted at the end.')}</div>`
+  `<div class="hlg">${cell('<span class="hix">12</span>','Cost','In Credits. Matching resources can pay part.')}${cell(efR('+',2,'cr',1),'Boxed','Production: arrives every generation.')}${cell(`<span style="--c:${RCOL.sa}">${efR('+',3,'sa',0)}</span>`,'Plain','A gain: arrives when you play the card.')}${cell(`<span class="ef"><span class="n">−</span>${tIcon('co')}</span><span class="ef"><span class="n">+</span>${tIcon('so')}</span><span class="ef"><span class="n">+</span>${tIcon('we')}</span>`,'Track step','Moves a track one step: +1 {TR}.')}${cell(`<span class="ef"><span class="n">+2</span>${CARDIC}</span>`,'Draw','Take cards from your deck.')}${cell(`{VPL:2}`,'Victory points','Counted at the end.')}</div>`
  +`<div class="hcl wide"><div class="hic"><span class="ef"><span class="tx">Action</span><span class="n">2</span>${rc('bc')}<span class="tx">→</span><span class="n">+</span>${tIcon('so')}</span></div><b>Action</b><span class="ht">Active cards only. Once per generation, pay the left side to get the right side.</span></div>`
  +`<div class="htys">${ty('#E8871E','Event','played once')}${ty('#4CBB17','Build','stays in play')}${ty('#0047AB','Active','an Action each generation')}</div>`),
- std=sec('Standard projects',`<div class="hsp">${Object.values(STD).map(s=>`<span class="pl">${stdLabel(s.l)}</span>`).join('')}</div>`,'Always in the bottom bar. Three move a track (+1 TR); a Ruin pays Salvage.');
- modal(`<div class="help"><div class="hph"><h2>How to play</h2><p>Second Spring: bring a wrecked world back to life, and finish with the most points.</p><button class="pri" onclick="closeModal()">Got it</button></div><div class="hpb"><div class="hpc">${goal}${path}${std}</div><div class="hpc">${loop}${vp}</div><div class="hpc">${res}${tiles}</div><div class="hpc">${card}</div></div></div>`)}
+ std=sec('Standard projects',`<div class="hsp">${Object.values(STD).map(s=>`<span class="pl">${stdLabel(s.l)}</span>`).join('')}</div>`,'Always in the bottom bar. Three move a track (+1 {TR}); a Ruin pays Salvage.');
+ modal(`<div class="help"><div class="hph"><h2>How to play</h2><p>Second Spring: bring a wrecked world back to life, and finish with the most points.</p><button class="pri" onclick="closeModal()">Got it</button></div><div class="hpb"><div class="hpc">${goal}${path}${std}</div><div class="hpc">${loop}${vp}</div><div class="hpc">${res}${tiles}</div><div class="hpc">${card}</div></div></div>`.replace(/\{TR\}/g,'<span class="htr" title="Terraform rating">TR</span>').replace(/\{VP(L)?(?::(\w+))?\}/g,(m,l,n)=>`<span class="hvp${l?' lg':''}" title="Victory points">${WREATH}${n?`<span class="hvn">${n}</span>`:''}</span>`));dismiss()}
 const tgh=()=>$('#hand').classList.toggle('open');
 
 /* ---------- RENDER ---------- */
@@ -288,7 +342,7 @@ function drawCell(c){const k=(c.t||'')+(c.o??'');if(c.dk===k)return;const first=
  const who=c.o!=null&&G.ps[c.o]?` · ${G.ps[c.o].c.n}`:'';
  g.classList.toggle('noimg',!!window.NOTILES);g.querySelector('title').textContent=c.t?LN[c.t]+who:'';
  g.querySelector('.tl').innerHTML=`<g transform="scale(1,${KV})"><g class="${first||!c.t?'':'pop'}">${tileImg(c.t||'')}</g></g>${c.o!=null?badge(c.o):''}`}
-function mark(){const v=G.pend.length&&!G.bot?valid(G.pend[0]):[];G.cells.forEach(c=>document.getElementById('h'+c.id).classList.toggle('ok',v.includes(c)))}
+function mark(){const v=G.pend.length&&G.cur===ME?valid(G.pend[0]):[];G.cells.forEach(c=>document.getElementById('h'+c.id).classList.toggle('ok',v.includes(c)))}
 function fx(c,t){const g=document.createElementNS(NS,'g'),col={w:'#c7ecff',f:'#a5df84',s:'#f3dcae',p:'#b4eeff',c:'#bfe99a',r:'#d3c3b0'}[t];g.setAttribute('transform',`translate(${c.x},${c.y})`);let h='';
  if(t=='w')for(let i=0;i<3;i++)h+=`<circle class="ring" r="6" style="animation-delay:${i*.18}s"/>`;
  for(let i=0;i<9;i++){const a=i/9*6.28,d=24+Math.random()*14,w=t=='w';h+=`<circle class="pt" r="${w?2.5:2}" fill="${col}" style="--dx:${(Math.cos(a)*d).toFixed(1)}px;--dy:${(w?-20-Math.random()*20:Math.sin(a)*d*FY).toFixed(1)}px"/>`}
@@ -339,22 +393,23 @@ function cardHTML(cd,p,o={}){const c=cost(p,cd),s=slug(cd.n),v=cd.f.find(t=>t[0]
  return`<div class="pc ${cd.y}${vp?' hv':''}${o.no?' no':''}${o.used?' used':''}" style="${o.st||''}"><span class="ix">${c}</span>${synHTML(cd)}<div class="csp"><span class="ctg">${cd.t.map(tagIc).join('')}</span><div class="cty"><b>${{E:'Event',B:'Build',A:'Active'}[cd.y]}</b></div></div><div class="ccl"><div class="art"><div class="cai">${IMGX[s]?'':`<img src="cards/${s}.png" alt="" onerror="IMGX['${s}']=1;this.remove()">`}</div>${o.need?'<em class="cnc">Need Credits</em>':''}</div><div class="cpl"><h4>${cd.n}</h4></div><div class="fx">${fxHTML({...cd,f:cd.f.filter(t=>t[0]!='V')})}</div><div class="cbt"><p class="cds">${FLAV[cd.n]||''}</p>${vp?`<span class="cwv">${WREATH}<b>${vp}</b></span>`:''}</div></div></div>`}
 const cardsGrid=(p,ids=p.tab)=>ids.length?`<div class="pcg">${ids.map(id=>`<div class="pcw">${cardHTML(CARDS[id],p,{used:p.used.includes(id)})}</div>`).join('')}</div>`:'<div class="none">No cards played yet.</div>';
 function dismiss(){$('#modal').onclick=e=>{if(e.target.id=='modal')closeModal()}}
-function showPlayed(){if(!G||!G.ps.length)return;const p=G.ps[0],ids=p.tab.filter(id=>CARDS[id].y!='A');modal(`<div class="pv" style="--c:${PC[0]}"><div class="pvh"><div><h2>Your played cards</h2><small>${ids.length} cards</small></div><button style="margin-left:auto" onclick="closeModal()">Close</button></div>${cardsGrid(p,ids)}</div>`);dismiss()}
+function showPlayed(){if(!G||!G.ps.length)return;const p=G.ps[ME],ids=p.tab.filter(id=>CARDS[id].y!='A');modal(`<div class="pv" style="--c:${PC[ME]}"><div class="pvh"><div><h2>Your played cards</h2><small>${ids.length} cards</small></div><button style="margin-left:auto" onclick="closeModal()">Close</button></div>${cardsGrid(p,ids)}</div>`);dismiss()}
 function viewPlayer(i){if(!G||!G.ps[i])return;const p=G.ps[i];
- modal(`<div class="pv" style="--c:${PC[p.i]}"><div class="pvh">${mono(p.c)}<div><h2>${p.c.n}</h2><small>${p.bot?'Bot':esc(myName())} · ${p.c.t} · TR ${p.tr}</small></div>${symHTML(p.i,26)}<span class="vp"><b>${score(p)}</b> VP</span><button onclick="closeModal()">Close</button></div><div class="pvr">${Object.keys(R).map(k=>`<div class="r" style="--c:${RCOL[k]}">${resIcon(k)}<span>${p.res[k]}</span><i>+${k=='cr'?p.tr+p.pr.cr:p.pr[k]}</i></div>`).join('')}</div><h3>Cards in play · ${p.tab.length}</h3>${cardsGrid(p)}</div>`);dismiss()}
+ modal(`<div class="pv" style="--c:${PC[p.i]}"><div class="pvh">${mono(p.c)}<div><h2>${p.c.n}</h2><small>${p.bot?'Bot':esc(p.name||myName())} · ${p.c.t} · TR ${p.tr}</small></div>${symHTML(p.i,26)}<span class="vp"><b>${score(p)}</b> VP</span><button onclick="closeModal()">Close</button></div><div class="pvr">${Object.keys(R).map(k=>`<div class="r" style="--c:${RCOL[k]}">${resIcon(k)}<span>${p.res[k]}</span><i>+${k=='cr'?p.tr+p.pr.cr:p.pr[k]}</i></div>`).join('')}</div><h3>Cards in play · ${p.tab.length}</h3>${cardsGrid(p)}</div>`);dismiss()}
 const STDRES={Seeds:'se',Biochar:'bc',Cr:'cr'};
 function stdLabel(l){const m=l.match(/^(\d+) (\w+) → (.*)$/);if(!m||!STDRES[m[2]])return l;return`<span class="sn">${m[1]}</span>${resIcon(STDRES[m[2]])}<span class="sa">→</span><span>${m[3]}</span>`}
-function render(){if(!G||!G.ps.length)return;const p=G.ps[0],b=busy();
+function render(){renderUI();share()}
+function renderUI(){if(!G||G.phase!=='play'||!G.ps.length)return;const p=G.ps[ME],b=busy();
  const sgm=(n,t)=>Array.from({length:t},(_,i)=>`<i class="${i<n?'on':i==n?'nxt':''}"></i>`).join(''),
  ck='<svg class="ck" viewBox="0 0 14 14"><circle cx="7" cy="7" r="7" fill="#b9de8c"/><path d="M3.8 7.3l2.2 2.2 4.2-4.6" stroke="#14260f" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
  arc=(c,ic,nm,tip,v,u,g,lit,t,nx,done)=>{let lv='';for(let i=0;i<t;i++){const d=180+(i+.5)*180/t,a=d*Math.PI/180;lv+=`<g class="glf${i<lit?' on':''}${i===nx?' nx':''}" transform="translate(${(85+68*Math.cos(a)).toFixed(1)} ${(88+68*Math.sin(a)).toFixed(1)}) rotate(${(d+90).toFixed(1)})"><polygon class="l1" points="0,-7.5 -4.6,0 0,7.5"/><polygon class="l2" points="0,-7.5 4.6,0 0,7.5"/></g>`}
   return`<div class="ga ${c}${done?' done':''}" title="${tip}"><svg viewBox="0 0 170 104" aria-hidden="true"><path class="rim" d="M12 92 A73 73 0 0 1 158 92"/>${lv}<path class="dn" d="M22 92 A63 63 0 0 1 148 92"/></svg><div class="gac"><div class="gar"><span class="gai">${ic}</span><b class="gav">${v}${u?`<small>${u}</small>`:''}</b>${done?ck:''}</div><span class="tn">${nm}</span><span class="gag">${g}</span></div></div>`};
- $('#top').innerHTML=arc('k-co',CO2SVG,'CO₂ in the air','Lower CO₂ to 0',G.t.co,'T','empties to 0',G.t.co,14,G.t.co-1,G.t.co<=0)+arc('k-so',LEAF,'Soil','Raise Soil to 14%',G.t.so,'%','goal 14%',G.t.so,14,G.t.so,G.t.so>=14)+arc('k-we',DROP,'Wetlands','Place 9 wetlands',G.t.we,'','goal 9',G.t.we,9,G.t.we,G.t.we>=9)+'<div class="gf">Each step forward = <b>+1 TR</b> · bars fill as the world heals · all three full ends the game</div>';
+ $('#top').innerHTML=arc('k-co',CO2SVG,'CO₂ in the air','Lower CO₂ to 0',G.t.co,'T','empties to 0',G.t.co,14,G.t.co-1,G.t.co<=0)+arc('k-so',LEAF,'Soil','Raise Soil to 14%',G.t.so,'%','goal 14%',G.t.so,14,G.t.so,G.t.so>=14)+arc('k-we',DROP,'Wetlands','Place 9 wetlands',G.t.we,'','goal 9',G.t.we,9,G.t.we,G.t.we>=9);
  $('#pn').textContent='0'+G.ps.length;
  const cs=$('#corps');if(cs.children.length!=G.ps.length)cs.innerHTML=G.ps.map(()=>'<div class="co"></div>').join('');
- G.ps.forEach((x,i)=>{const e=cs.children[i],on=!G.over&&(G.cur===x.i||(G.cur==null&&!x.i));
-  e.className=`co${x.i?'':' me'}${G.cur===x.i?' act':''}${on?' out':''}`;e.style.cssText=`--c:${PC[x.i]};--h:${x.c.h}`;e.title=x.c.d;e.onclick=()=>viewPlayer(x.i);
-  e.innerHTML=`${mono(x.c)}<span class="nm"><b>${x.bot?'Bot '+x.i:esc(myName())}</b>${x.bot&&G.cur===x.i?'<i>playing…</i>':''}</span><span class="vp"><b>${score(x)}</b> VP</span><small class="sub">${symHTML(x.i,13)}${x.c.n}</small>`});
+ G.ps.forEach((x,i)=>{const e=cs.children[i],on=!G.over&&G.cur===x.i;
+  e.className=`co${x.i===ME?' me':''}${G.cur===x.i?' act':''}${on?' out':''}`;e.style.cssText=`--c:${PC[x.i]};--h:${x.c.h}`;e.title=x.c.d;e.onclick=()=>viewPlayer(x.i);
+  e.innerHTML=`${mono(x.c)}<span class="nm"><b>${x.bot?'Bot '+x.i:esc(x.name||myName())}</b>${x.i!==ME&&G.cur===x.i?'<i>playing…</i>':''}</span><span class="vp"><b>${score(x)}</b> VP</span><small class="sub">${symHTML(x.i,13)}${x.c.n}</small>`});
  $('#res').innerHTML=Object.keys(R).map(k=>`<div class="r" style="--c:${RCOL[k]}">${resIcon(k)}<span>${p.res[k]}</span><i>+${k=='cr'?p.tr+p.pr.cr:p.pr[k]}</i></div>`).join('');
  $('#std').innerHTML=Object.entries(STD).map(([k,s])=>`<button class="${k=='f'||k=='so'?'rdy':''}" ${!b&&s.ok(p)?'':'disabled'} onclick="std('${k}')">${stdLabel(s.l)}</button>`).join('');
  genUpdate(b);
@@ -362,7 +417,7 @@ function render(){if(!G||!G.ps.length)return;const p=G.ps[0],b=busy();
  const pl=p.tab.filter(id=>CARDS[id].y!='A').length;
  $('#played').innerHTML=`<div class="pile">${pl?Array.from({length:Math.min(4,pl)},()=>'<div class="cb pl"><b>Played</b></div>').join('').replace(/<b>Played<\/b><\/div>$/,'<b>Played</b><span class="pn">'+pl+'</span></div>'):'<div class="cb empty"></div>'}</div><small>${pl} played</small>`;
  $('#log').innerHTML=G.log.join('<br>');
- const a=$('#ask');a.hidden=!G.pend.length||G.bot;a.textContent=G.pend.length?`Place: ${LN[G.pend[0]]} · click a glowing hex`:'';
+ const a=$('#ask');a.hidden=!G.pend.length||G.cur!==ME;a.textContent=G.pend.length?`Place: ${LN[G.pend[0]]} · click a glowing hex`:'';
  const acts=p.tab.filter(id=>CARDS[id].y=='A').reverse(),k=acts.length,SH2=13.8*14.6,off=k>1?Math.max(40,Math.min(84,(Math.max(300,innerHeight-380)-SH2)/(k-1))):0;
  $('#tab').innerHTML=(k?`<div class="stk" style="width:138px;height:${Math.round(SH2+(k-1)*off)}px">${acts.map((id,j)=>{const cd=CARDS[id],used=p.used.includes(id),dis=used||b||!canAct(p,id);return`<div class="stkw" style="--u:13.8px;top:${Math.round(j*off)}px;z-index:${k-j};--off:${Math.round(off)}px">${cardHTML(cd,p,{used,no:dis&&!used})}<button class="hit${j?'':' full'}" ${dis?'disabled':''} onclick="uiAct(${id})" title="${cd.n}"></button></div>`}).join('')}</div>`:'');
  const hn=p.hand.length,avail=Math.min(innerWidth*.9-40,1060),hm=hn>1?Math.min(8,(avail-hn*172.5)/(hn-1)):0,mid=(hn-1)/2,tilt=Math.min(3.4,22/Math.max(hn,1));
@@ -409,7 +464,8 @@ function holdStart(b){if(HOLD||b.disabled)return;HOLD={b,t0:performance.now(),ra
 function genUpdate(b){const g=$('#gen');
  if(!g.firstElementChild)g.innerHTML=`<div class="wh" role="img">${WHEEL_SVG}</div><button class="sl" type="button" data-state="ready" title="Hold to start the next generation">${SEAL_HTML}</button>`;
  wheelSet(g.querySelector('.wh'),G.gen);
- const sl=g.querySelector('.sl');sl.dataset.state=G.bot?'wait':G.pend.length?'tile':'ready';sl.disabled=!!b;
+ const sl=g.querySelector('.sl');sl.dataset.state=G.cur!==ME?'wait':G.pend.length?'tile':'ready';sl.disabled=!!b;
+ sl.querySelector('.lbl.ready').textContent=NET?'End turn':'Next generation';sl.title=NET?'Hold to end your turn':'Hold to start the next generation';
  if(b)holdStop();else if(!HOLD)holdClear(sl)}
 document.addEventListener('pointerdown',e=>{const b=e.target.closest&&e.target.closest('#gen .sl');if(!b||e.button||b.disabled)return;e.preventDefault();try{b.setPointerCapture(e.pointerId)}catch(_){}holdStart(b)});
 ['pointerup','pointercancel'].forEach(t=>document.addEventListener(t,holdStop));
