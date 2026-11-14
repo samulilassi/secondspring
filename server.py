@@ -152,7 +152,8 @@ class Handler(SimpleHTTPRequestHandler):
                     bots = 0
                 token = secrets.token_urlsafe(18)
                 rooms[code] = {"status": "open", "bots": bots, "v": 0, "state": None, "touched": time.time(),
-                               "players": [{"name": clean_name(data.get("name")), "token": token}]}
+                               "players": [{"name": clean_name(data.get("name")), "token": token,
+                                            "cid": str(data.get("cid") or "")[:40]}]}
                 return self.reply(200, {"code": code, "token": token, "seat": 0, "bots": bots,
                                         "players": [rooms[code]["players"][0]["name"]]})
             room = rooms.get(str(data.get("code", "")).upper())
@@ -160,12 +161,18 @@ class Handler(SimpleHTTPRequestHandler):
                 return self.reply(404, {"error": "Lobby not found. Check the code and try again."})
             room["touched"] = time.time()
             if action == "join":                      # join an open lobby
+                cid = str(data.get("cid") or "")[:40]
+                for seat, p in enumerate(room["players"]):
+                    if cid and p.get("cid") == cid:   # same browser pressed Join again: give back the same seat
+                        return self.reply(200, {"code": str(data["code"]).upper(), "token": p["token"],
+                                                "seat": seat, "bots": room["bots"],
+                                                "players": [q["name"] for q in room["players"]]})
                 if room["status"] != "open":
                     return self.reply(409, {"error": "That game has already started."})
                 if len(room["players"]) >= MAX_PLAYERS:
                     return self.reply(409, {"error": "That lobby is full."})
                 token = secrets.token_urlsafe(18)
-                room["players"].append({"name": clean_name(data.get("name")), "token": token})
+                room["players"].append({"name": clean_name(data.get("name")), "token": token, "cid": cid})
                 return self.reply(200, {"code": str(data["code"]).upper(), "token": token,
                                         "seat": len(room["players"]) - 1, "bots": room["bots"],
                                         "players": [p["name"] for p in room["players"]]})
