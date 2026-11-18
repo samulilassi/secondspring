@@ -529,6 +529,17 @@ const runnerSeat=()=>{const h=G.ps.find(p=>p&&!p.bot);return h?h.i:-1};
 function idleCheck(){if(!G||G.phase!=='play'||G.over||G.cur==null||RUNNING)return;const cp=G.ps[G.cur];if(!cp||cp.bot||G.cur===ME||Date.now()-LASTMOVE<IDLE_MS)return;
  const w=G.ps.find(p=>p&&!p.bot&&p.i!==G.cur);if(!w||w.i!==ME)return;
  cp.bot=true;G.pend=[];UNDO=null;log(`${esc(cp.name||'A player')} was away · a bot took over`);render();runBots()}
+/* the idle player's own browser shows a countdown for the last minute; it uses its own LASTMOVE clock, which resets at about the same time as the watcher's */
+const IDLE_WARN_MS=60*1000; // show the warning when this much time is left
+function idleWarn(){let el=$('#idlew');
+ const me=G&&G.ps[ME],show=NET&&NET.status==='playing'&&G&&G.phase==='play'&&!G.over&&G.cur===ME&&me&&!me.bot&&G.ps.some(p=>p&&!p.bot&&p.i!==ME),
+  left=IDLE_MS-(Date.now()-LASTMOVE);
+ if(!show||left>IDLE_WARN_MS){if(el)el.hidden=true;return}
+ if(!el){el=document.createElement('div');el.id='idlew';document.body.appendChild(el)}
+ const s=Math.ceil(left/1000);
+ el.textContent=s>0?`You've been idle · a bot takes over your turn in ${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}. Make a move to stay in.`:`You've been idle · a bot is taking over your turn any moment now.`;
+ el.hidden=false}
+setInterval(idleWarn,500);
 function applyState(t){const was=G;NET.applying=true;
  try{G=hydrate(t);if(BOARD!==G.code){au();buildBoard()}else G.cells.forEach(drawCell);NET.last=ser();
   if(G.phase==='pick'){document.body.className='picking';pickScreen();return}
@@ -697,7 +708,18 @@ function cardHTML(cd,p,o={}){const c=cost(p,cd),s=slug(cd.n),v=cd.f.find(t=>/^V-
  return`<div class="pc ${cd.y}${vp?' hv':''}${cx>=6?' lf2':cx>=4?' lf':''}${o.no?' no':''}${o.used?' used':''}" style="${cardBg(cd.n)}${o.st||''}"><span class="ix">${c}</span>${synHTML(cd)}<div class="csp"><div class="cty"><b>${{E:'Event',B:'Build',A:'Active'}[cd.y]}</b></div></div><div class="ccl"><div class="art"><div class="cai">${IMGX[s]?'':`<img src="cards/${s}.png" alt="" onerror="IMGX['${s}']=1;this.remove()">`}</div>${rq}${o.tok?`<em class="ctk" title="Tokens on this card">${TKN}<b>${o.tok}</b></em>`:''}${o.need?'<em class="cnc">Need Credits</em>':''}</div><div class="cpl"><h4>${cd.n}</h4></div><div class="fx">${fxHTML({...cd,f:cd.f.filter(t=>!/^V-?\d+$/.test(t))})}</div><div class="cbt"><p class="cds">${esc(cd.fl||'')}</p>${vp?`<span class="cwv">${WREATH}<b>${vp}</b></span>`:''}</div></div></div>`}
 const cardsGrid=(p,ids=p.tab)=>ids.length?`<div class="pcg">${ids.map(id=>`<div class="pcw">${cardHTML(CARDS[id],p,{used:p.used.includes(id),tok:(p.tok||{})[id]})}</div>`).join('')}</div>`:'<div class="none">No cards played yet.</div>';
 function dismiss(){$('#modal').onclick=e=>{if(e.target.id=='modal')closeModal()}}
-function showPlayed(){if(!G||!G.ps.length)return;const p=G.ps[ME],ids=p.tab.filter(id=>CARDS[id].y!='A');modal(`<div class="pv" style="--c:${PC[ME]}"><div class="pvh"><div><h2>Your played cards</h2><small>${ids.length} cards</small></div><button style="margin-left:auto" onclick="closeModal()">Close</button></div>${cardsGrid(p,ids)}</div>`);dismiss()}
+/* filter bar for the played-cards views (player profile, your played cards). It looks like the Cards page bar,
+   but keeps its own filters in PF, so the Cards page filters (CF) are not changed. PFV redraws the view that is open. */
+let PF={s:new Set(),y:new Set()},PFV=null;
+const PF_TY={B:'Build',A:'Active',E:'Event'},PF_TC={B:'#4CBB17',A:'#0047AB',E:'#FF5F1F'};
+const pfShown=ids=>ids.filter(id=>{const cd=CARDS[id];return(!PF.y.size||PF.y.has(cd.y))&&[...PF.s].every(k=>cd.s.includes(k))});
+function pfBar(ids){if(!ids.length)return'';const sy=Object.keys(SYN).filter(k=>ids.some(id=>CARDS[id].s.includes(k))); // only symbols on this player's cards
+ return`<div class="cpf">${sy.length?`<div class="cpr">${sy.map(k=>`<button class="cpb${PF.s.has(k)?' on':''}" title="${SYN[k].n}" onclick="pfTog('s','${k}')"><img src="ui/syn/${k}.svg" alt=""><span>${SYN[k].n}</span></button>`).join('')}</div>`:''}
+ <div class="cpr">${Object.keys(PF_TY).map(k=>`<button class="cpb ty${PF.y.has(k)?' on':''}" style="--tc:${PF_TC[k]}" onclick="pfTog('y','${k}')"><i></i><span>${PF_TY[k]}</span></button>`).join('')}${PF.s.size||PF.y.size?'<button class="cpb clr" onclick="pfTog()">Clear filters</button>':''}</div></div>`}
+const pfGrid=(p,ids)=>{const sh=pfShown(ids);return ids.length&&!sh.length?'<div class="none">No card has all of these.</div>':cardsGrid(p,sh)};
+function pfTog(g,k){if(g)PF[g].has(k)?PF[g].delete(k):PF[g].add(k);else PF={s:new Set(),y:new Set()};
+ const sc=document.querySelector('.pv')?.scrollTop;if(PFV)PFV();const e=document.querySelector('.pv');if(e&&sc)e.scrollTop=sc}
+function showPlayed(keep){if(!G||!G.ps.length)return;if(!keep)PF={s:new Set(),y:new Set()};PFV=()=>showPlayed(1);const p=G.ps[ME],ids=p.tab.filter(id=>CARDS[id].y!='A');modal(`<div class="pv" style="--c:${PC[ME]}"><div class="pvh"><div><h2>Your played cards</h2><small>${ids.length} cards</small></div><button style="margin-left:auto" onclick="closeModal()">Close</button></div>${pfBar(ids)}${pfGrid(p,ids)}</div>`);dismiss()}
 /* ---------- CARDS PAGE (Settings → Cards): every card in the game, with filter buttons for synergies and card types ---------- */
 let CF={s:new Set(),y:new Set()};
 function cardsPage(){$('#set').hidden=true;const P0={c:{n:''}},TY={B:'Build',A:'Active',E:'Event'},TC={B:'#4CBB17',A:'#0047AB',E:'#FF5F1F'};
@@ -707,8 +729,8 @@ function cardsPage(){$('#set').hidden=true;const P0={c:{n:''}},TY={B:'Build',A:'
  <div class="cpr">${Object.keys(TY).map(k=>`<button class="cpb ty${CF.y.has(k)?' on':''}" style="--tc:${TC[k]}" onclick="cfTog('y','${k}')"><i></i><span>${TY[k]}</span></button>`).join('')}${CF.s.size||CF.y.size?'<button class="cpb clr" onclick="CF={s:new Set(),y:new Set()};cardsPage()">Clear filters</button>':''}</div></div>
  <div class="pcg">${list.length?list.map(cd=>`<div class="pcw">${cardHTML(cd,P0)}</div>`).join(''):'<div class="none">No card has all of these.</div>'}</div></div>`);dismiss()}
 function cfTog(g,k){CF[g].has(k)?CF[g].delete(k):CF[g].add(k);const sc=document.querySelector('.cpg')?.scrollTop;cardsPage();const e=document.querySelector('.cpg');if(e&&sc)e.scrollTop=sc}
-function viewPlayer(i){if(!G||!G.ps[i])return;const p=G.ps[i];
- modal(`<div class="pv" style="--c:${PC[p.i]}"><div class="pvh">${mono(p.c)}<div><h2>${p.c.n}</h2><small>${p.bot?'Bot':esc(p.name||myName())} · ${p.c.t} · TR ${p.tr}</small></div>${symHTML(p.i,26)}<span class="vp cvp" title="Victory points">${WREATH}<b>${score(p)}</b></span><button onclick="closeModal()">Close</button></div><div class="pvtop"><div class="pvcorp">${corpCardHTML(p.c,p.ci,true)}</div><div class="pvr">${Object.keys(R).map(k=>`<div class="r" style="--c:${RCOL[k]}">${resIcon(k)}<span>${p.res[k]}</span><i>+${k=='cr'?p.tr+p.pr.cr:p.pr[k]}</i></div>`).join('')}</div></div><h3>Cards in play · ${p.tab.length}</h3>${cardsGrid(p)}</div>`);dismiss()}
+function viewPlayer(i,keep){if(!G||!G.ps[i])return;const p=G.ps[i];if(!keep)PF={s:new Set(),y:new Set()};PFV=()=>viewPlayer(i,1);
+ modal(`<div class="pv" style="--c:${PC[p.i]}"><div class="pvh">${mono(p.c)}<div><h2>${p.c.n}</h2><small>${p.bot?'Bot':esc(p.name||myName())} · ${p.c.t} · TR ${p.tr}</small></div>${symHTML(p.i,26)}<span class="vp cvp" title="Victory points">${WREATH}<b>${score(p)}</b></span><button onclick="closeModal()">Close</button></div><div class="pvtop"><div class="pvcorp">${corpCardHTML(p.c,p.ci,true)}</div><div class="pvr">${Object.keys(R).map(k=>`<div class="r" style="--c:${RCOL[k]}">${resIcon(k)}<span>${p.res[k]}</span><i>+${k=='cr'?p.tr+p.pr.cr:p.pr[k]}</i></div>`).join('')}</div></div><h3>Cards in play · ${p.tab.length}</h3>${pfBar(p.tab)}${pfGrid(p,p.tab)}</div>`);dismiss()}
 const STDRES={Seeds:'se',Biochar:'bc',Cr:'cr'};
 function stdLabel(l){const m=l.match(/^(\d+) (\w+) → (.*)$/);if(!m||!STDRES[m[2]])return l;return`<span class="sn">${m[1]}</span>${resIcon(STDRES[m[2]])}<span class="sa">→</span><span>${m[3]}</span>`}
 function render(){renderUI();share()}
