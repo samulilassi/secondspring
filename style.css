@@ -670,3 +670,15 @@ body.lobby #cnt,body.lobby #set{z-index:60}
 .dragging{opacity:.35}
 #dropm{position:fixed;z-index:69;pointer-events:none;background:#b9de8c;border-radius:3px;box-shadow:0 0 8px #b9de8c}
 >>>>>>> active-card-deck
+
+/* first player seal (design A1): who starts this generation. It moves to the next player each generation, like a dealer button */
+#corps .co{position:relative}
+.co .coin{display:contents} /* the slip's content: display:contents keeps its pieces in the slip's grid */
+.fps{position:absolute;left:-13px;top:-15px;z-index:3;width:42px;height:42px;line-height:0;filter:drop-shadow(0 2px 3px #0006)}
+.fps svg{display:block;width:100%;height:100%;overflow:visible}
+.fps .fp-rays{transform-box:view-box;transform-origin:20px 20px;animation:fpRays 24s linear infinite}
+.fps.arrive{animation:fpIn .8s cubic-bezier(.3,1.4,.5,1)}
+.fps.arrive .fp-spr{transform-box:view-box;transform-origin:20px 26px;animation:fpSpr .6s .35s cubic-bezier(.3,1.8,.5,1) backwards}
+@keyframes fpRays{to{transform:rotate(360deg)}}
+@keyframes fpIn{from{transform:rotate(-120deg) scale(.3);opacity:0}}
+@keyframes fpSpr{from{transform:scale(0)}}
