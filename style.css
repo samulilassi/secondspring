@@ -644,7 +644,7 @@ body.lobby #cnt,body.lobby #set{z-index:60}
 /* ---------- 220-card update: requirement chip, tokens, synergy icons in effects, keep-3 draft ---------- */
 .pc .syi{display:inline-block;width:1.45em;height:1.45em;vertical-align:middle;filter:drop-shadow(0 .05em .08em #0006)}
 .pc .crq{position:absolute;left:.4em;bottom:.4em;z-index:3;display:inline-flex;align-items:center;gap:.2em;padding:.18em .45em;border-radius:.6em;background:#f1e9d2ee;border:.08em solid #1d2a24;color:#2b3a32;font:700 .62em/1 system-ui,sans-serif;font-style:normal;white-space:nowrap;box-shadow:0 1px 3px #0005}
-.pc .crq .n{font-family:"SSNum",system-ui,sans-serif;font-size:1.25em}.pc .crq .ts img,.pc .crq .syi{width:1.5em;height:1.5em}.pc .crq .tl{width:1.6em;height:1.4em}
+.pc .crq .n{font-family:"SSNum",system-ui,sans-serif;font-size:1.25em}.pc .crq .ts img,.pc .crq .syi{width:1.5em;height:1.5em}.pc .crq .tl{position:relative;display:inline-block;flex:none;width:1.6em;height:1.4em}.pc .crq .tl img{position:absolute;width:125%;max-width:none;left:-12.5%;top:-15.5%}
 .pc .crq.bad{background:#b04a3a;color:#fff;border-color:#5e1d14}
 .pc .cnc{bottom:2.6em}
 .tkn{display:inline-block;width:1em;height:1em;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff6c8,#e0b33a 55%,#8f6514);border:.08em solid #4a3208;vertical-align:middle;box-shadow:0 .05em .1em #0006}
@@ -656,3 +656,11 @@ body.lobby #cnt,body.lobby #set{z-index:60}
 .drf button:disabled{opacity:.5;cursor:default}
 #ask .undo+.undo{margin-left:6px}
 .pc.lf .fx{font-size:.74em;gap:.1em .45em}.pc.lf2 .fx{font-size:.64em;gap:.05em .4em;padding:.15em .3em}
+/* your 4 Active decks (2×2 square) and dragging cards to rearrange decks and hand */
+#tab .decks{display:grid;grid-template-columns:repeat(2,138px);gap:10px;align-items:start}
+#tab .stk.empty{border:2px dashed #ffffff33;border-radius:10px;box-sizing:border-box}
+#tab,#hand .cs{user-select:none;-webkit-user-select:none}
+#tab .hit,#hand .cs .pcw{touch-action:none}
+.dragc{position:fixed!important;z-index:70!important;opacity:.92}.dragc,.dragc *{pointer-events:none!important}
+.dragging{opacity:.35}
+#dropm{position:fixed;z-index:69;pointer-events:none;background:#b9de8c;border-radius:3px;box-shadow:0 0 8px #b9de8c}
