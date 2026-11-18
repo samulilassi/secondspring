@@ -348,7 +348,7 @@ function fire(ev,a,src){for(const q of G.ps){if(!q)continue;for(const id of q.ta
 function rival(p,a,r,n){const rs=G.ps.filter(x=>x&&x!==p);if(!rs.length)return;
  if(p.bot){const t=rs.reduce((b,x)=>(a=='Z'?x.pr[r]:x.res[r])>(a=='Z'?b.pr[r]:b.res[r])?x:b);hitRival(p,a,r,n,t)}else G.pend.push({rv:a,r,n})}
 function hitRival(p,a,r,n,t){if(a=='Z')t.pr[r]=Math.max(Math.min(0,t.pr[r]),t.pr[r]-n);else{const k=Math.min(n,t.res[r]);t.res[r]-=k;if(a=='Q')p.res[r]+=k}
- log(`${p.c.n.split(' ')[0]} ${a=='Q'?'stole from':'hit'} ${t.c.n.split(' ')[0]}`)}
+ log(`${lname(p)} ${a=='Q'?'stole from':'hit'} ${lname(t)}`)}
 function q(p,t){if(p.bot){const c=bpick(p,t);if(c)place(p,c,t)}else G.pend.push(t)}
 /* runs effects; id = the card they come from (needed for tokens). Actions, triggers, discounts and game-end points are skipped here */
 function run(p,f,id){for(const k of f){const a=k[0],b=k.slice(1);
@@ -365,10 +365,10 @@ function place(p,c,t){const k=p.c.n[0];
   if(t=='s'&&k=='C')p.pr.sa++;
   if(t=='p'){p.pr.fc++;if(nb(c).some(n=>n.t=='s'))p.pr.cr++}
   fire({k:'place',t},p)}
- fx(c,t);sfx(t);log(`${p.c.n.split(' ')[0]}: ${LN[t]}`);render()}
+ fx(c,t);sfx(t);log(`${lname(p)}: ${LN[t]}`);render()}
 function play(p,hi){const id=p.hand[hi],cd=CARDS[id];pay(p,cd,1);p.hand.splice(hi,1);if(cd.y!='E')p.tab.push(id);
  for(const k of cd.s)p.sp[k]=(p.sp[k]||0)+1; // synergy cards played, for requirements and scoring
- log(`${p.c.n.split(' ')[0]} played ${cd.n}`);sfx('card');run(p,cd.f.filter(t=>!/^([AWK]\{|VS|VT)/.test(t)),id);fire({k:'play',cd},p,id)}
+ log(`${lname(p)} played ${cd.n}`);sfx('card');run(p,cd.f.filter(t=>!/^([AWK]\{|VS|VT)/.test(t)),id);fire({k:'play',cd},p,id)}
 function act(p,id){if(p.used.includes(id)||!canAct(p,id))return;const a=aparse(id);for(const x of a.c)p.res[x.slice(0,2)]-=+x.slice(2);p.used.push(id);run(p,a.g,id);sfx('card')}
 const STD={
 f:{l:'8 Seeds → Forest',ok:p=>p.res.se>=8,go:p=>{p.res.se-=8;q(p,'f')}},
@@ -453,10 +453,24 @@ function playAnim(el){const card=el.querySelector('.pc');if(!card||matchMedia('(
  const dx=innerWidth/2-r.left-r.width/2,dy=innerHeight*.42-r.top-r.height/2;
  c.animate([{transform:'translate(0,0) scale(1)',opacity:1},{transform:`translate(${dx}px,${dy}px) scale(1.25)`,opacity:1,offset:.55},{transform:`translate(${dx}px,${dy-30}px) scale(1.3)`,opacity:0}],{duration:900,easing:'cubic-bezier(.3,.7,.3,1)'}).onfinish=()=>c.remove()}
 /* right click on your hand: sort by cost → type → time in hand */
-const HSORTS=['time in hand','cost','type'];
+const HSORTS=['time in hand','cost','type','custom']; // 'custom' = the order you dragged your hand into
+/* YOUR LAYOUT: which of your 4 Active decks each card is in (top card first) and your custom hand order.
+   Saved only in this browser (localStorage), never in the shared game G, so other players never see it. */
+let LAY=null; // {k: storage key, d: [[card ids] ×4 decks], h: [card ids in your hand order]}
+const layKey=()=>`ss_layout_${G.code||'solo'}_${ME}`;
+function laySave(){try{localStorage[LAY.k]=JSON.stringify(LAY)}catch(e){}}
+function layoutFix(p){const k=layKey(); // keeps the saved layout in step with the real game
+ if(!LAY||LAY.k!==k){LAY=null;try{LAY=JSON.parse(localStorage[k]||'null')}catch(e){}
+  if(!LAY||!Array.isArray(LAY.d)||LAY.d.length!==4)LAY={d:[[],[],[],[]],h:[]};if(!Array.isArray(LAY.h))LAY.h=[];LAY.k=k}
+ const acts=p.tab.filter(id=>CARDS[id].y=='A'),was=JSON.stringify(LAY);
+ LAY.d=LAY.d.map(d=>d.filter(id=>acts.includes(id))); // cards no longer yours are dropped
+ acts.forEach(id=>{if(!LAY.d.some(d=>d.includes(id)))LAY.d[0].unshift(id)}); // a newly played Active card goes on top of deck 1
+ LAY.h=LAY.h.filter(id=>p.hand.includes(id));p.hand.forEach(id=>{if(!LAY.h.includes(id))LAY.h.push(id)}); // new hand cards go last
+ if(JSON.stringify(LAY)!==was)laySave()}
 function handOrder(p){const ix=p.hand.map((_,i)=>i),ty={B:0,A:1,E:2};
+ if(HSORT==3&&LAY)return LAY.h.map(id=>p.hand.indexOf(id)).filter(i=>i>=0);
  if(HSORT==1)ix.sort((a,b)=>CARDS[p.hand[a]].c-CARDS[p.hand[b]].c||a-b);else if(HSORT==2)ix.sort((a,b)=>ty[CARDS[p.hand[a]].y]-ty[CARDS[p.hand[b]].y]||CARDS[p.hand[a]].c-CARDS[p.hand[b]].c||a-b);return ix}
-function cycleSort(e){e.preventDefault();HSORT=(HSORT+1)%3;renderUI();const h=$('#hand .hh');if(h)h.textContent=`Sorted by ${HSORTS[HSORT]} · right click to change`}
+function cycleSort(e){e.preventDefault();HSORT=(HSORT+1)%4;renderUI();const h=$('#hand .hh');if(h)h.textContent=`Sorted by ${HSORTS[HSORT]} · right click to change`}
 function uiAct(id){if(busy())return;UNDO=null;act(G.ps[ME],id);render()}
 function std(k){if(busy())return;const p=G.ps[ME];if(STD[k].ok(p)){const snap=ser();STD[k].go(p);UNDO=G.pend.length?snap:null;adv()}else sfx('err')}
 /* Undo a standard project until its tile is placed */
@@ -464,12 +478,14 @@ function undo(){if(!UNDO||!myTurn())return;G=hydrate(UNDO);UNDO=null;G.cells.for
 /* turn order rotates: generation 1 starts with player 0 (you), generation 2 with the next player, and so on */
 const order=()=>{const n=G.ps.length,s=(G.gen-1)%n;return G.ps.map((_,i)=>G.ps[(s+i)%n])};
 const pname=p=>p.bot?p.c.n.split(' ')[0]:p.name||myName();
+/* name shown in "The returning world": the player's in-game name, same as on the player panels */
+const lname=p=>p.bot?(p.name?esc(p.name)+' (bot)':'Bot '+p.i):esc(p.name||myName());
 function income(){for(const p of G.ps){const r=p.res;r.bc+=r.fc;r.fc=0;r.cr+=p.tr+p.pr.cr;for(const k of['sa','re','se','fc','bc'])r[k]=Math.max(0,r[k]+p.pr[k]);p.used=[];
   p.draft=[];for(let i=0;i<5;i++){const c=deal();if(c!=null)p.draft.push(c)}p.keep=3;if(p.bot)botDraft(p)}
  G.gen++;log(`Generation ${G.gen} begins`);sfx('gen')}
 /* pass the turn to the next player; after the last one, income arrives and a new generation starts. Returns false when the game ends */
 function nextSeat(){G.ti++;
- if(G.ti>=G.ps.length){income();if(over()||G.gen>15){G.cur=null;render();fin();return false}G.ti=0;log(`${pname(order()[0])} starts generation ${G.gen}`)}
+ if(G.ti>=G.ps.length){income();if(over()||G.gen>15){G.cur=null;render();fin();return false}G.ti=0;log(`${lname(order()[0])} starts generation ${G.gen}`)}
  G.cur=order()[G.ti].i;return true}
 /* holding the seal ends your turn */
 async function nextGen(){if(busy())return;if(!nextSeat())return;render();await runBots()}
@@ -558,27 +574,27 @@ function help(first){$('#set').hidden=true; // first = shown before choosing a c
  step=(n,t,x)=>`<div class="hstp"><i>${n}</i><div><b>${t}</b><span class="ht">${x}</span></div></div>`,
  sec=(t,b,n)=>`<section class="hs"><h3>${t}</h3>${n?`<p class="hn">${n}</p>`:''}${b}</section>`,
  ty=(c,n,x)=>`<span class="hty" style="--t:${c}"><b>${n}</b> ${x}</span>`;
- const goal=sec('The goal',`<div class="hgl"><div class="hg">${tIcon('co')}<b>14 → 0</b><small>CO₂ (tonnes)</small></div><div class="hg">${tIcon('so')}<b>0 → 14%</b><small>Soil</small></div><div class="hg">${tIcon('we')}<b>0 → 9</b><small>Wetlands</small></div></div>`,'Heal the world. Each track step is <b>+1</b> {TR} (terraform rating). The game ends when all three are full or generation 15 ends. <b>Highest score wins.</b>'),
+ const goal=sec('The goal',`<div class="hgl"><div class="hg">${tIcon('co')}<b>14 → 0</b><small>CO₂ (tonnes)</small></div><div class="hg">${tIcon('so')}<b>0 → 14%</b><small>Soil</small></div><div class="hg">${tIcon('we')}<b>0 → 9</b><small>Wetlands</small></div></div>`,'Heal the world. Each track step is <b>+1</b> {VP}. The game ends when all three are full or generation 15 ends. <b>Highest score wins.</b>'),
  path=sec('Path to victory',
-  step(1,'Build your engine','Play cheap Build cards that add production, the boxed numbers. Income = your {TR} + Credit production.')
- +step(2,'Turn income into progress','Spend Seeds on Forests, Biochar on Soil, Credits on Wetlands. Each step is +1 {TR}, and every {TR} gained is 1 {VP}.')
+  step(1,'Build your engine','Play cheap Build cards that add production, the boxed numbers. Income = 10 Credits, +1 for each track step you have made, + Credit production.')
+ +step(2,'Turn income into progress','Spend Seeds on Forests, Biochar on Soil, Credits on Wetlands. Each track step is +1 {VP}.')
  +step(3,'Claim the board','Settle beside Forests and Wetlands, and put Wildlife Corridors by Forests. These tiles score as the world greens.')
  +step(4,'Finish ahead','Full tracks end the game. Close it out while you lead, before generation 15 ends.')),
  loop=sec('Each generation',
   step(1,'Act','Play cards, use card Actions and standard projects, in any order. When a tile is due, click a glowing hex.')
  +step(2,'Hold <span class="hnx">Next generation</span>','Your rivals take their turns.')
- +step(3,'Income arrives','Credits = {TR} + Credit production. Other resources arrive as produced. Fusion Cells turn into Biochar. You see 5 cards and keep 3.')),
+ +step(3,'Income arrives','Credits = 10, +1 for each track step you have made, + Credit production. Other resources arrive as produced. Fusion Cells turn into Biochar. You see 5 cards and keep 3.')),
  vp=sec('Every way to score {VP}',
-  row('<span class="trb">TR</span>','Terraform rating',`Starts at 10. +1 for each step on ${I.co}${I.so}${I.we}`,'1 {VP} per {TR} gained')
+  row(I.co,'Track steps',`Every step you move ${I.co}${I.so}${I.we}`,'1 {VP} per step')
  +row(`{VPL:2}`,'Cards with {VP}','A card showing {VP:3} adds 3 once played.','as shown')
  +row(hx('settlement'),'Settlements','Scores for every Forest or Wetland touching it.','1 per neighbour')
  +row(hx('corridor'),'Wildlife Corridors','Score for every Forest or Wetland touching one you own.','1 per neighbour'),'Your score is the sum of these four:'),
  tiles=sec('Tiles',
-  row(hx('forest'),'Forest',`${I.co} −1 and +1 {TR}. +2 ${rc('se')} for each Wetland next to it.`)
- +row(hx('wetland'),'Wetland',`${I.we} +1 and +1 {TR}.`)
+  row(hx('forest'),'Forest',`${I.co} −1 and +1 {VP}. Forest tile gives 2 ${rc('se')} when placed next to a Wetland.`)
+ +row(hx('wetland'),'Wetland',`${I.we} +1 and +1 {VP}.`)
  +row(hx('power'),'Fusion Plant',`${efR('+',1,'fc',1)} a production boost. Next to a Settlement: +1 ${rc('cr')} production too.`)
- +row(hx('settlement'),'Settlement','Scores {VP} from its neighbours.')
- +row(hx('corridor'),'Wildlife Corridor','Must touch a Forest if a free hex beside one exists.')
+ +row(hx('settlement'),'Settlement','Gives 1 {VP} for every adjacent Forest or Wetland. Can\'t be placed next to another Settlement.')
+ +row(hx('corridor'),'Wildlife Corridor','Gives 1 {VP} for every adjacent Forest or Wetland. Must touch a Forest if a free hex beside one exists.')
  +row(hx('ruin'),'Ruin',`Blocks its hex. Clear it for +3 ${rc('sa')}, then build there.`)),
  res=sec('Resources',
   row(rc('cr'),'Credits','Pay for cards and projects.')
@@ -588,11 +604,11 @@ function help(first){$('#set').hidden=true; // first = shown before choosing a c
  +row(rc('fc'),'Fusion Cells','Become Biochar when the generation ends.')
  +row(rc('bc'),'Biochar','8 raise Soil by 1.'),'Your corporation bends one rule: hover its panel.'),
  card=sec('Reading a card',
-  `<div class="hlg">${cell('<span class="hix">12</span>','Cost','In Credits. Matching resources can pay part.')}${cell(efR('+',2,'cr',1),'Boxed','Production: arrives every generation.')}${cell(`<span style="--c:${RCOL.sa}">${efR('+',3,'sa',0)}</span>`,'Plain','A gain: arrives when you play the card.')}${cell(`<span class="ef"><span class="n">−</span>${tIcon('co')}</span><span class="ef"><span class="n">+</span>${tIcon('so')}</span><span class="ef"><span class="n">+</span>${tIcon('we')}</span>`,'Track step','Moves a track one step: +1 {TR}.')}${cell(`<span class="ef"><span class="n">+2</span>${CARDIC}</span>`,'Draw','Take cards from your deck.')}${cell(`{VPL:2}`,'Victory points','Counted at the end.')}</div>`
+  `<div class="hlg">${cell('<span class="hix">12</span>','Cost','In Credits. Matching resources can pay part.')}${cell(efR('+',2,'cr',1),'Boxed','Production: arrives every generation.')}${cell(`<span style="--c:${RCOL.sa}">${efR('+',3,'sa',0)}</span>`,'Plain','A gain: arrives when you play the card.')}${cell(`<span class="ef"><span class="n">−</span>${tIcon('co')}</span><span class="ef"><span class="n">+</span>${tIcon('so')}</span><span class="ef"><span class="n">+</span>${tIcon('we')}</span>`,'Track step','Moves a track one step: +1 {VP}.')}${cell(`<span class="ef"><span class="n">+2</span>${CARDIC}</span>`,'Draw','Take cards from your deck.')}${cell(`{VPL:2}`,'Victory points','Counted at the end.')}</div>`
  +`<div class="hcl wide"><div class="hic"><span class="ef"><span class="tx">Action</span><span class="n">2</span>${rc('bc')}<span class="tx">→</span><span class="n">+</span>${tIcon('so')}</span></div><b>Action</b><span class="ht">Active cards only. Once per generation, pay the left side to get the right side.</span></div>`
  +`<div class="htys">${ty('#E8871E','Event','played once')}${ty('#4CBB17','Build','stays in play')}${ty('#0047AB','Active','an Action each generation')}</div>`),
- std=sec('Standard projects',`<div class="hsp">${Object.values(STD).map(s=>`<span class="pl">${stdLabel(s.l)}</span>`).join('')}</div>`,'In the resource bar, under Seeds and Biochar. Both move a track (+1 {TR}).');
- modal(`<div class="help${first?' first':''}"><div class="hph"><h2>How to play</h2><p>Second Spring: bring a wrecked world back to life, and finish with the most points.</p><button class="pri" onclick="${first?'helpDone()':'closeModal()'}">Got it</button></div><div class="hpb"><div class="hpc">${goal}${path}${std}</div><div class="hpc">${loop}${vp}</div><div class="hpc">${res}${tiles}</div><div class="hpc">${card}</div></div></div>`.replace(/\{TR\}/g,'<span class="htr" title="Terraform rating">TR</span>').replace(/\{VP(L)?(?::(\w+))?\}/g,(m,l,n)=>`<span class="hvp${l?' lg':''}" title="Victory points">${WREATH}${n?`<span class="hvn">${n}</span>`:''}</span>`));if(!first)dismiss()}
+ std=sec('Standard projects',`<div class="hsp">${Object.values(STD).map(s=>`<span class="pl">${stdLabel(s.l)}</span>`).join('')}</div>`,'In the resource bar, under Seeds and Biochar. Both move a track (+1 {VP}).');
+ modal(`<div class="help${first?' first':''}"><div class="hph"><h2>How to play</h2><p>Second Spring: bring a wrecked world back to life, and finish with the most points.</p><button class="pri" onclick="${first?'helpDone()':'closeModal()'}">Got it</button></div><div class="hpb"><div class="hpc">${goal}${path}${std}</div><div class="hpc">${loop}${vp}</div><div class="hpc">${res}${tiles}</div><div class="hpc">${card}</div></div></div>`.replace(/\{VP(L)?(?::(\w+))?\}/g,(m,l,n)=>`<span class="hvp${l?' lg':''}" title="Victory points">${WREATH}${n?`<span class="hvn">${n}</span>`:''}</span>`));if(!first)dismiss()}
 function helpDone(){closeModal();if(G&&G.phase==='pick')pickScreen()}
 const tgh=()=>$('#hand').classList.toggle('open');
 
@@ -685,15 +701,15 @@ function fx1(t){const a=t[0],b=t.slice(1);let m;
  if(t.startsWith('A{')){const[c,g]=t.slice(2,-1).split(':');return`<span class="ef"><span class="tx">Action</span>${c?c.split(',').map(x=>`<span class="n">${x.slice(2)}</span>${resIcon(x.slice(0,2))}`).join(''):''}<span class="tx">→</span>${g.split(',').map(fx1).join('')}</span>`}
  if(t.startsWith('W{')){const[w,g]=t.slice(2,-1).split(':'),[k,x]=w.split('.');
   const l=k=='play'?(x=='E'?'<span class="tx">When you play an Event</span>':`<span class="tx">When you play</span>${synIc(x)}`):k=='place'?`<span class="tx">When you place</span>${tileIc(x)}`:k=='any'?`<span class="tx">When anyone places</span>${tileIc(x)}`:`<span class="tx">When anyone ${x=='co'?'lowers':'raises'}</span>${tIcon(x)}`;
-  return`<span class="ef"><span class="tx">Effect</span>${l}<span class="tx">:</span>${g.split(',').map(fx1).join('')}</span>`}
- if(m=t.match(/^K\{(\w+):(\d+)\}$/))return`<span class="ef"><span class="tx">Effect</span>${m[1]=='all'?'<span class="tx">All your cards</span>':`${synIc(m[1])}<span class="tx">cards</span>`}<span class="tx">cost</span><span class="n">−${m[2]}</span></span>`;
+  return`<span class="ef">${l}<span class="tx">:</span>${g.split(',').map(fx1).join('')}</span>`}
+ if(m=t.match(/^K\{(\w+):(\d+)\}$/))return`<span class="ef">${m[1]=='all'?'<span class="tx">All your cards</span>':`${synIc(m[1])}<span class="tx">cards</span>`}<span class="tx">cost</span><span class="n">−${m[2]}</span></span>`;
  if(m=t.match(/^VS\{(.+):(\d+)\}$/))return`<span class="ef"><span class="tx">Game end</span><span class="n">1</span><span class="tx">VP per</span><span class="n">${m[2]}</span>${m[1].startsWith('syn.')?synIc(m[1].slice(4))+'<span class="tx">played</span>':tileIc(m[1])}</span>`;
  if(m=t.match(/^VT(\d+)$/))return`<span class="ef"><span class="tx">Game end</span><span class="n">1</span><span class="tx">VP per</span>${m[1]>1?`<span class="n">${m[1]}</span>`:''}${TKN}</span>`;
  return''}
 function fxHTML(cd){return cd.f.map(fx1).join('')}
 /* requirement shown on the card picture; red when you don't meet it */
 function reqHTML(cd){const r=cd.q;if(!r)return'';if(r=='own.p')return`<span class="tx">Own a</span>${tileIc('p')}`;const m=r.match(/^(co|so|we|syn\.(\w+))(>=|<=)(\d+)$/);if(!m)return'';
- if(m[2])return`<span class="n">${m[4]}</span>${synIc(m[2])}<span class="tx">played</span>`;return`${tIcon(m[1])}<span class="n">${m[3]=='>='?'≥':'≤'}${m[4]}${m[1]=='so'?'%':''}</span>`}
+ if(m[2])return`<span class="n">${m[4]}</span>${synIc(m[2])}<span class="tx">played</span>`;return`${tIcon(m[1])}<span class="tx">${m[3]=='>='?'min':'max'}</span><span class="n">${m[4]}${m[1]=='so'?'%':''}</span>`}
 function reqTxt(cd){const r=cd.q;if(!r)return'';if(r=='own.p')return'Requires: you own a Fusion Plant';const m=r.match(/^(co|so|we|syn\.(\w+))(>=|<=)(\d+)$/);if(!m)return'';
  if(m[2])return`Requires: ${m[4]} ${SYN[m[2]].n} cards played`;const nm={co:'CO₂',so:'Soil',we:'Wetlands'}[m[1]];return`Requires: ${nm} ${m[4]}${m[1]=='so'?'%':''} or ${m[3]=='>='?'more':'less'}`}
 /* card design: spine (type + tags), framed arch photo, name plaque, effect panel, description, wreath for VP */
@@ -763,10 +779,13 @@ function renderUI(){if(!G||G.phase!=='play'||!G.ps.length)return;const p=G.ps[ME
  const a=$('#ask'),p0=G.pend[0];a.hidden=!G.pend.length||!myTurn();a.innerHTML=!G.pend.length?'':typeof p0=='string'?`Place: ${LN[p0]} · glowing hexes are the best spots, any outlined hex works${UNDO?'<button class="undo" onclick="undo()">Undo</button>':''}`
   :`${{Q:'Steal up to',X:'A rival loses up to',Z:'A rival loses'}[p0.rv]} ${p0.n} ${R[p0.r]}${p0.rv=='Z'?' production':''} · choose the rival:${G.ps.filter(x=>x&&x.i!==ME).map(x=>`<button class="undo" onclick="uiRival(${x.i})">${esc(pname(x))}</button>`).join('')}`;
  if(G.cur===ME&&LASTCUR!==undefined&&LASTCUR!==ME&&myTurn())sfx('turn');LASTCUR=G.cur;
- const acts=p.tab.filter(id=>CARDS[id].y=='A').reverse(),k=acts.length,SH2=13.8*14.6,off=k>1?Math.max(40,Math.min(84,(Math.max(300,innerHeight-380)-SH2)/(k-1))):0;
- $('#tab').innerHTML=(k?`<div class="stk" style="width:138px;height:${Math.round(SH2+(k-1)*off)}px">${acts.map((id,j)=>{const cd=CARDS[id],ha=!!aparse(id),used=ha&&p.used.includes(id),dis=!ha||used||b||!canAct(p,id);return`<div class="stkw" style="--u:13.8px;top:${Math.round(j*off)}px;z-index:${k-j};--off:${Math.round(off)}px">${cardHTML(cd,p,{used,no:ha&&dis&&!used,tok:p.tok[id]})}<button class="hit${j?'':' full'}" ${dis?'disabled':''} onclick="uiAct(${id})" title="${cd.n}"></button></div>`}).join('')}</div>`:'');
+ /* your Active cards: 4 decks in a 2×2 square; each deck stacks like the old single pile (top card first). Order comes from LAY */
+ layoutFix(p);const SH2=13.8*14.6,AH=(Math.max(300,innerHeight-380)-10)/2, // 2 rows of decks share the height the old pile had
+ deck=(acts,n)=>{const k=acts.length,off=k>1?Math.max(40,Math.min(84,(AH-SH2)/(k-1))):0;
+  return`<div class="stk${k?'':' empty'}" data-deck="${n}" data-off="${Math.round(off)}" style="width:138px;height:${Math.round(SH2+(k?k-1:0)*off)}px">${acts.map((id,j)=>{const cd=CARDS[id],ha=!!aparse(id),used=ha&&p.used.includes(id),dis=!ha||used||b||!canAct(p,id);return`<div class="stkw" data-id="${id}" style="--u:13.8px;top:${Math.round(j*off)}px;z-index:${k-j};--off:${Math.round(off)}px">${cardHTML(cd,p,{used,no:ha&&dis&&!used,tok:p.tok[id]})}<button class="hit${j?'':' full'}" ${dis?'disabled':''} onclick="uiAct(${id})" title="${cd.n}"></button></div>`}).join('')}</div>`};
+ $('#tab').innerHTML=LAY.d.some(d=>d.length)?`<div class="decks">${LAY.d.map(deck).join('')}</div>`:'';
  const hn=p.hand.length,avail=Math.min(innerWidth*.9-40,1060),hm=hn>1?Math.min(8,(avail-hn*172.5)/(hn-1)):0,mid=(hn-1)/2,tilt=Math.min(3.4,22/Math.max(hn,1));
- $('#hand').oncontextmenu=cycleSort;$('#hand').innerHTML=`<div class="hh" onclick="tgh()">${hn} CARDS · HOVER TO REVEAL</div><div class="cs">${handOrder(p).map((i,j)=>{const id=p.hand[i],cd=CARDS[id],ok=!b&&canPlay(p,cd),d=j-mid;return`<div class="pcw" style="--u:17.25px;margin-left:${j?hm:0}px" onclick="uiPlay(${i},this)">${cardHTML(cd,p,{no:!ok,need:!b&&!pay(p,cd,0),st:`--r:${(d*tilt).toFixed(1)}deg;--y:${Math.round(d*d*1.4)}px`})}</div>`}).join('')}</div>`;
+ $('#hand').oncontextmenu=cycleSort;$('#hand').innerHTML=`<div class="hh" onclick="tgh()">${hn} CARDS · HOVER TO REVEAL</div><div class="cs">${handOrder(p).map((i,j)=>{const id=p.hand[i],cd=CARDS[id],ok=!b&&canPlay(p,cd),d=j-mid;return`<div class="pcw" data-hi="${id}" style="--u:17.25px;margin-left:${j?hm:0}px" onclick="uiPlay(${i},this)">${cardHTML(cd,p,{no:!ok,need:!b&&!pay(p,cd,0),st:`--r:${(d*tilt).toFixed(1)}deg;--y:${Math.round(d*d*1.4)}px`})}</div>`}).join('')}</div>`;
  G.cells.forEach(drawCell);mark();
  if(myTurn()&&p.draft&&p.draft.length&&!G.over&&!document.querySelector('#modal:not([hidden]) .drf'))draftUI()}
 /* your corporation card fills the space between the player panels and the deck (hidden if there is too little room) */
@@ -823,6 +842,34 @@ function genUpdate(b){const g=$('#gen');
  if(b)holdStop();else if(!HOLD)holdClear(sl)}
 document.addEventListener('pointerdown',e=>{const b=e.target.closest&&e.target.closest('#gen .sl');if(!b||e.button||b.disabled)return;e.preventDefault();try{b.setPointerCapture(e.pointerId)}catch(_){}holdStart(b)});
 ['pointerup','pointercancel'].forEach(t=>document.addEventListener(t,holdStop));
+/* DRAG TO REARRANGE your Active decks and your hand (pointer events). A press only becomes a drag after moving 6 px,
+   so a normal click still uses the card. After a drag, the click the browser sends on release is swallowed. */
+let DRAG=null,NOCLICK=false;
+function dropAt(d,x,y){if(d.hand){const h=$('#hand .cs');if(!h)return null;const r=h.getBoundingClientRect();if(x<r.left-60||x>r.right+60||y<r.top-60||y>r.bottom+40)return null;
+  const cs=[...h.querySelectorAll('.pcw')].filter(c=>c.dataset.hi!=d.id).map(c=>c.getBoundingClientRect()),ix=cs.filter(c=>c.left+c.width/2<x).length;
+  return{ix,mx:ix<cs.length?cs[ix].left-3:cs.length?cs[cs.length-1].right+1:r.left,my:r.top,mw:4,mh:r.height}}
+ let best=null,bd=80;document.querySelectorAll('#tab .stk').forEach(s=>{const r=s.getBoundingClientRect(),dx=Math.max(r.left-x,0,x-r.right),dy=Math.max(r.top-y,0,y-r.bottom-120),dd=Math.hypot(dx,dy);if(dd<bd){bd=dd;best={s,r}}});
+ if(!best)return null;const n=+best.s.dataset.deck,off=+best.s.dataset.off,k=LAY.d[n].filter(id=>id!==d.id).length,r=best.r;
+ const ix=Math.max(0,Math.min(k,off?Math.round((y-r.top)/off):y<r.top+r.height/2?0:k));
+ return{n,ix,mx:r.left,my:Math.min(r.bottom,off?r.top+ix*off:ix?r.bottom:r.top)-2,mw:r.width,mh:4}}
+function dragEnd(d){if(d.c)d.c.remove();d.el.classList.remove('dragging');const m=$('#dropm');if(m)m.hidden=true}
+document.addEventListener('pointerdown',e=>{if(e.button||!G||!LAY)return;const t=e.target.closest&&e.target.closest('#tab .stkw .hit,#hand .cs .pcw');if(!t)return;
+ const w=t.closest('.stkw')||t;DRAG={el:w,hand:!!w.dataset.hi,id:+(w.dataset.hi||w.dataset.id),x:e.clientX,y:e.clientY,on:false}});
+document.addEventListener('pointermove',e=>{const d=DRAG;if(!d||d.esc)return;
+ if(!d.on){if(Math.hypot(e.clientX-d.x,e.clientY-d.y)<6)return;d.on=true;const r=d.el.getBoundingClientRect();d.dx=d.x-r.left;d.dy=d.y-r.top;
+  d.c=d.el.cloneNode(true);d.c.classList.add('dragc');d.c.style.cssText+=`;width:${r.width}px;height:${r.height}px;margin:0`;document.body.append(d.c);d.el.classList.add('dragging')}
+ d.c.style.left=e.clientX-d.dx+'px';d.c.style.top=e.clientY-d.dy+'px';
+ let m=$('#dropm');if(!m){m=document.createElement('div');m.id='dropm';document.body.append(m)}
+ const t=dropAt(d,e.clientX,e.clientY);m.hidden=!t;if(t)m.style.cssText=`left:${t.mx}px;top:${t.my}px;width:${t.mw}px;height:${t.mh}px`});
+document.addEventListener('pointerup',e=>{const d=DRAG;DRAG=null;if(!d||!d.on)return;NOCLICK=true;setTimeout(()=>NOCLICK=false,0);if(d.esc)return;dragEnd(d);
+ const t=dropAt(d,e.clientX,e.clientY),p=G&&G.ps[ME];if(!t||!p)return;
+ if(d.hand){const ids=handOrder(p).map(i=>p.hand[i]).filter(id=>id!==d.id);ids.splice(t.ix,0,d.id);LAY.h=ids;HSORT=3}
+ else{LAY.d.forEach(a=>{const i=a.indexOf(d.id);if(i>=0)a.splice(i,1)});LAY.d[t.n].splice(t.ix,0,d.id)}
+ laySave();renderUI();if(d.hand){const h=$('#hand .hh');if(h)h.textContent=`Sorted by ${HSORTS[HSORT]} · right click to change`}});
+document.addEventListener('pointercancel',()=>{if(DRAG&&DRAG.on)dragEnd(DRAG);DRAG=null});
+document.addEventListener('keydown',e=>{if(e.key=='Escape'&&DRAG){if(DRAG.on){dragEnd(DRAG);DRAG.esc=true}else DRAG=null}}); // cancelled: the card goes back, release does nothing
+document.addEventListener('click',e=>{if(NOCLICK){NOCLICK=false;e.stopPropagation();e.preventDefault()}},true); // a drag never uses or plays the card
+document.addEventListener('dragstart',e=>{if(e.target.closest&&e.target.closest('#tab,#hand'))e.preventDefault()}); // stop the browser's own picture-dragging
 document.addEventListener('keydown',e=>{const b=e.target.closest&&e.target.closest('#gen .sl');if(b&&(e.key==' '||e.key=='Enter')){e.preventDefault();if(!e.repeat)holdStart(b)}});
 document.addEventListener('keyup',e=>{if(e.key==' '||e.key=='Enter')holdStop()});
 window.addEventListener('blur',holdStop);
