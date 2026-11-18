@@ -689,3 +689,18 @@ body.lobby #cnt,body.lobby #set{z-index:60}
 .orv.still .pcw{animation:none}
 @keyframes orvbg{0%{opacity:0}15%{opacity:1}80%{opacity:1}100%{opacity:0}}
 @keyframes orvcard{0%{transform:translateY(40px) scale(.7);opacity:0}18%{transform:none;opacity:1}80%{transform:none;opacity:1}100%{transform:translateY(-20px) scale(.95);opacity:0}}
+
+/* payment window: choose how many Salvage / Rare minerals pay for a card, Credits pay the rest */
+.pay{width:min(440px,94vw);max-height:92vh;overflow:auto;display:grid;gap:12px;justify-items:center;text-align:center;padding:22px 26px;background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 50px #000a}
+.pay h2{font:500 22px var(--serif);color:var(--bone);margin:0}
+.pay .pcw{--u:13px}
+.pyl{display:grid;gap:8px;width:100%}
+.pyr{display:flex;align-items:center;gap:10px;padding:7px 12px;border-radius:10px;background:#0003;border:1px solid var(--line);text-align:left}
+.pyr .ri{width:28px;height:28px;font-size:10px;flex:none;grid-area:auto}
+.pyr span{flex:1}.pyr small{display:block;opacity:.65;font-size:12px}
+.pyr b{min-width:2.2ch;text-align:center;font:700 18px "SSNum",system-ui,sans-serif}.pyr b.bad{color:#ef5a52}
+.pyr button{width:30px;height:30px;padding:0;border-radius:50%;text-align:center;font-weight:700}
+.pyb{display:flex;gap:10px}
+/* draft: Credits for each card you leave */
+.drf p .ri,.dcr .ri,.dcb .ri{display:inline-grid;width:18px;height:18px;font-size:7px;vertical-align:middle;grid-area:auto;margin-left:2px}
+.dcr{position:absolute;top:-8px;right:-8px;z-index:4;display:flex;align-items:center;padding:3px 7px;border-radius:999px;background:#13271fe6;border:1px solid var(--c);color:var(--c);font:700 13px/1 system-ui,sans-serif;box-shadow:0 2px 6px #0007;pointer-events:none}

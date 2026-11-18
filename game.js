@@ -335,9 +335,11 @@ const draw=(p,n)=>{const h=p.hand.length;while(n-->0){const c=deal();if(c==null)
 /* card actions: A{fc4:Tco} = pay 4 Fusion Cells, lower CO2 by 1. Once per generation */
 const aparse=id=>{const t=CARDS[id].f.find(t=>t.startsWith('A{'));if(!t)return null;const[c,g]=t.slice(2,-1).split(':');return{c:c?c.split(','):[],g:g.split(',')}};
 const canAct=(p,id)=>{const a=aparse(id);return!!a&&a.c.every(x=>p.res[x.slice(0,2)]>=+x.slice(2))};
-function pay(p,cd,go){let n=cost(p,cd);const u={};const use=(r,v)=>{if(n<=0)return;const k=Math.min(p.res[r],Math.ceil(n/v));u[r]=k;n-=k*v};
- for(const k of cd.s){const y=SYN[k];if(y&&y.pay)use(y.pay,y.v)}if(p.c.n[0]=='V'&&cd.s.includes('soil'))use('se',2);
- n=Math.max(0,n);if(p.res.cr<n)return false;if(go){for(const r in u)p.res[r]-=u[r];p.res.cr-=n}return true}
+/* other resources that can pay for a card: Salvage 2 for Industry, Rare mineral 3 for Engine, (Vireo) Seeds 2 for Soil */
+const payWays=(p,cd)=>{const w=[];for(const k of cd.s){const y=SYN[k];if(y&&y.pay&&!w.some(x=>x.r==y.pay))w.push({r:y.pay,v:y.v})}if(p.c.n[0]=='V'&&cd.s.includes('soil'))w.push({r:'se',v:2});return w};
+/* how a card is paid: u = resources used, cr = Credits still needed. With no plan it uses as much of the other resources as helps (the old automatic way) */
+function payPlan(p,cd,plan){let n=cost(p,cd);const u={};for(const{r,v}of payWays(p,cd)){const k=n<=0?0:Math.max(0,Math.min(p.res[r],plan?(plan[r]||0):Math.ceil(n/v)));u[r]=k;n-=k*v}return{u,cr:Math.max(0,n)}}
+function pay(p,cd,go,plan){const{u,cr}=payPlan(p,cd,plan);if(p.res.cr<cr)return false;if(go){for(const r in u)p.res[r]-=u[r];p.res.cr-=cr}return true}
 function track(p,t){let m=false;if(t=='co'){if(G.t.co>0){G.t.co--;p.tr++;m=true}}else if(G.t[t]<(t=='so'?14:9)){G.t[t]++;p.tr++;m=true}if(m)fire({k:'track',t},p)}
 /* triggers on Active cards: W{play.industry:Gcr2} etc. src = the card that caused it (a card never triggers itself) */
 function fire(ev,a,src){for(const q of G.ps){if(!q)continue;for(const id of q.tab){if(id===src)continue;for(const t of CARDS[id].f){if(!t.startsWith('W{'))continue;
@@ -366,7 +368,7 @@ function place(p,c,t){const k=p.c.n[0];
   if(t=='p'){p.pr.fc++;if(nb(c).some(n=>n.t=='s'))p.pr.cr++}
   fire({k:'place',t},p)}
  fx(c,t);sfx(t);log(`${lname(p)}: ${LN[t]}`);render()}
-function play(p,hi){const id=p.hand[hi],cd=CARDS[id];pay(p,cd,1);p.hand.splice(hi,1);if(cd.y!='E')p.tab.push(id);
+function play(p,hi,plan){const id=p.hand[hi],cd=CARDS[id];pay(p,cd,1,plan);p.hand.splice(hi,1);if(cd.y!='E')p.tab.push(id);
  for(const k of cd.s)p.sp[k]=(p.sp[k]||0)+1; // synergy cards played, for requirements and scoring
  G.pl=[...(G.pl||[]).slice(-7),{s:G.pseq=(G.pseq||0)+1,p:p.i,id}]; // recent plays (shared online), so other players can be shown the card
  log(`${lname(p)} played ${cd.n}`);sfx('card');run(p,cd.f.filter(t=>!/^([AWK]\{|VS|VT)/.test(t)),id);fire({k:'play',cd},p,id)}
@@ -388,7 +390,9 @@ function val(cd){const L=Math.min(7,Math.max(1,13-G.gen));let v=0;
 /* a bot keeps the best cards it sees: 5 of 10 at the start, 3 of 5 each generation (p.keep says how many) */
 const bv=(p,id)=>val(CARDS[id])/(1+cost(p,CARDS[id])/12);
 function botDraft(p){keepDraft(p,[...p.draft].sort((a,b)=>bv(p,b)-bv(p,a)).slice(0,p.keep||3))}
-function keepDraft(p,keep){p.hand.push(...keep);G.disc.push(...p.draft.filter(x=>!keep.includes(x)));p.draft=null}
+const DRAFT_CR=2; // Credits for each card you leave in a generation draft (not in the starting 10 → 5)
+const skipOk=p=>(p.keep||3)===3;
+function keepDraft(p,keep){if(skipOk(p))p.res.cr+=DRAFT_CR*Math.max(0,Math.min(3,p.draft.length)-keep.length);p.hand.push(...keep);G.disc.push(...p.draft.filter(x=>!keep.includes(x)));p.draft=null}
 function bpick(p,t){let best,bs=-9;for(const c of valid(t)){const n=nb(c);let s=Math.random()*1.5;
  if(t=='s')s+=n.filter(x=>x.t=='f'||x.t=='w').length*2;
  else if(t=='f'||t=='w')s+=n.filter(x=>x.t=='s'&&x.o===p.i).length*2.5+n.filter(x=>x.t=='s').length;
@@ -444,16 +448,28 @@ function uiRival(i){if(!myTurn()||G.over)return;const it=G.pend[0];if(!it||typeo
 /* at the start you see 10 cards and keep 5, each generation you see 5 and keep 3; the rest go to the discard pile */
 let DSEL=[];
 function draftUI(){const p=G.ps[ME];if(!p.draft||!p.draft.length)return;const need=Math.min(p.keep||3,p.draft.length);DSEL=DSEL.filter(x=>p.draft.includes(x));
- modal(`<div class="drf"><h2>Choose ${need} card${need>1?'s':''} to keep</h2><p>${p.draft.length>need?`The other ${p.draft.length-need} go to the discard pile.`:'Click the cards to keep them.'}${myTurn()?'':' You can choose now: the cards join your hand when your turn starts.'}</p><div class="pcg">${p.draft.map(id=>`<div class="pcw${DSEL.includes(id)?' sel':''}" onclick="drTog(${id})">${cardHTML(CARDS[id],p,{})}</div>`).join('')}</div><button class="pri" ${DSEL.length==need?'':'disabled'} onclick="drKeep()">Keep ${DSEL.length} / ${need}</button></div>`)}
+ modal(`<div class="drf"><h2>Choose ${need} card${need>1?'s':''} to keep</h2><p>${skipOk(p)?`Each card you leave gives you +${DRAFT_CR} ${resIcon('cr')} and goes to the discard pile.`:p.draft.length>need?`The other ${p.draft.length-need} go to the discard pile.`:'Click the cards to keep them.'}${myTurn()?'':' You can choose now: the cards join your hand when your turn starts.'}</p><div class="pcg">${p.draft.map(id=>`<div class="pcw${DSEL.includes(id)?' sel':''}" onclick="drTog(${id})">${cardHTML(CARDS[id],p,{})}${skipOk(p)&&!DSEL.includes(id)?`<span class="dcr" style="--c:${RCOL.cr}">+${DRAFT_CR}${resIcon('cr')}</span>`:''}</div>`).join('')}</div><button class="pri" ${DSEL.length==need||skipOk(p)&&DSEL.length<need?'':'disabled'} onclick="drKeep()">Keep ${DSEL.length} / ${need}${skipOk(p)&&DSEL.length<need?`<span class="dcb" style="--c:${RCOL.cr}"> · +${DRAFT_CR*(need-DSEL.length)}${resIcon('cr')}</span>`:''}</button></div>`)}
 function drTog(id){const p=G.ps[ME];if(!p.draft)return;const need=Math.min(p.keep||3,p.draft.length);if(DSEL.includes(id))DSEL=DSEL.filter(x=>x!==id);else if(DSEL.length<need)DSEL.push(id);draftUI()}
 /* choosing before your turn: the choice stays in this browser (PRE) and is applied when your turn starts, so two players never save the game at the same time */
 let PRE=null;
 const preNow=()=>!!(PRE&&G&&PRE.k===(G.code||'solo')&&PRE.gen===G.gen);
-function autoKeep(){const p=G&&G.ps[ME];if(!PRE||!p||!myTurn()||!p.draft||!p.draft.length)return;const ids=PRE.ids,ok=preNow()&&ids.length===Math.min(p.keep||3,p.draft.length)&&ids.every(id=>p.draft.includes(id));PRE=null;if(!ok)return;
+function autoKeep(){const p=G&&G.ps[ME];if(!PRE||!p||!myTurn()||!p.draft||!p.draft.length)return;const ids=PRE.ids,ok=preNow()&&(ids.length===Math.min(p.keep||3,p.draft.length)||skipOk(p)&&ids.length<Math.min(3,p.draft.length))&&ids.every(id=>p.draft.includes(id));PRE=null;if(!ok)return;
  keepDraft(p,ids);if(document.querySelector('#modal:not([hidden]) .drf'))closeModal();deckAnim(ids.length)}
-function drKeep(){const p=G.ps[ME];if(!p.draft)return;const need=Math.min(p.keep||3,p.draft.length);if(DSEL.length!=need)return;
- if(!myTurn()){PRE={k:G.code||'solo',gen:G.gen,ids:[...DSEL]};DSEL=[];closeModal();return}keepDraft(p,DSEL);DSEL=[];closeModal();deckAnim(need);render()}
-function uiPlay(i,el){if(busy())return;const p=G.ps[ME];if(!canPlay(p,CARDS[p.hand[i]]))return sfx('err');UNDO=null;if(el)playAnim(el);play(p,i);adv()}
+function drKeep(){const p=G.ps[ME];if(!p.draft)return;const need=Math.min(p.keep||3,p.draft.length);if(DSEL.length>need||DSEL.length<need&&!skipOk(p))return;
+ if(!myTurn()){PRE={k:G.code||'solo',gen:G.gen,ids:[...DSEL]};DSEL=[];closeModal();return}const k=DSEL.length;keepDraft(p,DSEL);DSEL=[];closeModal();deckAnim(k);render()}
+function uiPlay(i,el){if(busy())return;const p=G.ps[ME],cd=CARDS[p.hand[i]];if(!canPlay(p,cd))return sfx('err');
+ if(cost(p,cd)>0&&payWays(p,cd).some(w=>p.res[w.r]>0)){PAY={i,el,plan:payPlan(p,cd).u};return payUI()} // you can pay with Salvage / Rare minerals: confirm how
+ UNDO=null;if(el)playAnim(el);play(p,i);adv()}
+/* payment window: shows what the card costs and lets you change how many Salvage / Rare minerals (or Seeds) to use; Credits pay the rest */
+let PAY=null;
+function payUI(){const p=G.ps[ME],cd=CARDS[p.hand[PAY.i]],{u,cr}=payPlan(p,cd,PAY.plan),ok=p.res.cr>=cr;PAY.plan=u;
+ modal(`<div class="pay"><h2>Pay for ${esc(cd.n)}</h2><div class="pcw">${cardHTML(cd,p)}</div><div class="pyl">
+ ${payWays(p,cd).map(({r,v})=>`<div class="pyr" style="--c:${RCOL[r]}">${resIcon(r)}<span>${R[r]}<small>pays ${v} each · you have ${p.res[r]}</small></span><button ${u[r]>0?'':'disabled'} onclick="payStep('${r}',-1)" aria-label="Use one less">−</button><b>${u[r]}</b><button ${u[r]<p.res[r]&&cr>0?'':'disabled'} onclick="payStep('${r}',1)" aria-label="Use one more">+</button></div>`).join('')}
+ <div class="pyr" style="--c:${RCOL.cr}">${resIcon('cr')}<span>Credits<small>you have ${p.res.cr}</small></span><b class="${ok?'':'bad'}">${cr}</b></div></div>
+ <div class="pyb"><button onclick="PAY=null;closeModal()">Cancel</button><button class="pri" ${ok?'':'disabled'} onclick="payGo()">Pay and play</button></div></div>`);dismiss()}
+function payStep(r,d){if(!PAY)return;PAY.plan={...PAY.plan,[r]:(PAY.plan[r]||0)+d};payUI()}
+function payGo(){if(!PAY)return;const{i,el,plan}=PAY,p=G.ps[ME];PAY=null;closeModal();if(busy()||!canPlay(p,CARDS[p.hand[i]])||!pay(p,CARDS[p.hand[i]],0,plan))return sfx('err');
+ UNDO=null;if(el&&el.isConnected)playAnim(el);play(p,i,plan);adv()}
 /* a played card lifts to the middle of the screen and fades out */
 function playAnim(el){const card=el.querySelector('.pc');if(!card||matchMedia('(prefers-reduced-motion: reduce)').matches)return;const r=card.getBoundingClientRect(),c=card.cloneNode(true);
  c.style.cssText+=`;position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;margin:0;z-index:60;pointer-events:none;--r:0deg;--y:0px`;document.body.append(c);
