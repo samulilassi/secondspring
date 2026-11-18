@@ -368,6 +368,7 @@ function place(p,c,t){const k=p.c.n[0];
  fx(c,t);sfx(t);log(`${lname(p)}: ${LN[t]}`);render()}
 function play(p,hi){const id=p.hand[hi],cd=CARDS[id];pay(p,cd,1);p.hand.splice(hi,1);if(cd.y!='E')p.tab.push(id);
  for(const k of cd.s)p.sp[k]=(p.sp[k]||0)+1; // synergy cards played, for requirements and scoring
+ G.pl=[...(G.pl||[]).slice(-7),{s:G.pseq=(G.pseq||0)+1,p:p.i,id}]; // recent plays (shared online), so other players can be shown the card
  log(`${lname(p)} played ${cd.n}`);sfx('card');run(p,cd.f.filter(t=>!/^([AWK]\{|VS|VT)/.test(t)),id);fire({k:'play',cd},p,id)}
 function act(p,id){if(p.used.includes(id)||!canAct(p,id))return;const a=aparse(id);for(const x of a.c)p.res[x.slice(0,2)]-=+x.slice(2);p.used.push(id);run(p,a.g,id);sfx('card')}
 const STD={
@@ -443,15 +444,31 @@ function uiRival(i){if(!myTurn()||G.over)return;const it=G.pend[0];if(!it||typeo
 /* at the start you see 10 cards and keep 5, each generation you see 5 and keep 3; the rest go to the discard pile */
 let DSEL=[];
 function draftUI(){const p=G.ps[ME];if(!p.draft||!p.draft.length)return;const need=Math.min(p.keep||3,p.draft.length);DSEL=DSEL.filter(x=>p.draft.includes(x));
- modal(`<div class="drf"><h2>Choose ${need} card${need>1?'s':''} to keep</h2><p>${p.draft.length>need?`The other ${p.draft.length-need} go to the discard pile.`:'Click the cards to keep them.'}</p><div class="pcg">${p.draft.map(id=>`<div class="pcw${DSEL.includes(id)?' sel':''}" onclick="drTog(${id})">${cardHTML(CARDS[id],p,{})}</div>`).join('')}</div><button class="pri" ${DSEL.length==need?'':'disabled'} onclick="drKeep()">Keep ${DSEL.length} / ${need}</button></div>`)}
+ modal(`<div class="drf"><h2>Choose ${need} card${need>1?'s':''} to keep</h2><p>${p.draft.length>need?`The other ${p.draft.length-need} go to the discard pile.`:'Click the cards to keep them.'}${myTurn()?'':' You can choose now: the cards join your hand when your turn starts.'}</p><div class="pcg">${p.draft.map(id=>`<div class="pcw${DSEL.includes(id)?' sel':''}" onclick="drTog(${id})">${cardHTML(CARDS[id],p,{})}</div>`).join('')}</div><button class="pri" ${DSEL.length==need?'':'disabled'} onclick="drKeep()">Keep ${DSEL.length} / ${need}</button></div>`)}
 function drTog(id){const p=G.ps[ME];if(!p.draft)return;const need=Math.min(p.keep||3,p.draft.length);if(DSEL.includes(id))DSEL=DSEL.filter(x=>x!==id);else if(DSEL.length<need)DSEL.push(id);draftUI()}
-function drKeep(){const p=G.ps[ME];if(!p.draft||!myTurn())return;const need=Math.min(p.keep||3,p.draft.length);if(DSEL.length!=need)return;keepDraft(p,DSEL);DSEL=[];closeModal();deckAnim(need);render()}
+/* choosing before your turn: the choice stays in this browser (PRE) and is applied when your turn starts, so two players never save the game at the same time */
+let PRE=null;
+const preNow=()=>!!(PRE&&G&&PRE.k===(G.code||'solo')&&PRE.gen===G.gen);
+function autoKeep(){const p=G&&G.ps[ME];if(!PRE||!p||!myTurn()||!p.draft||!p.draft.length)return;const ids=PRE.ids,ok=preNow()&&ids.length===Math.min(p.keep||3,p.draft.length)&&ids.every(id=>p.draft.includes(id));PRE=null;if(!ok)return;
+ keepDraft(p,ids);if(document.querySelector('#modal:not([hidden]) .drf'))closeModal();deckAnim(ids.length)}
+function drKeep(){const p=G.ps[ME];if(!p.draft)return;const need=Math.min(p.keep||3,p.draft.length);if(DSEL.length!=need)return;
+ if(!myTurn()){PRE={k:G.code||'solo',gen:G.gen,ids:[...DSEL]};DSEL=[];closeModal();return}keepDraft(p,DSEL);DSEL=[];closeModal();deckAnim(need);render()}
 function uiPlay(i,el){if(busy())return;const p=G.ps[ME];if(!canPlay(p,CARDS[p.hand[i]]))return sfx('err');UNDO=null;if(el)playAnim(el);play(p,i);adv()}
 /* a played card lifts to the middle of the screen and fades out */
 function playAnim(el){const card=el.querySelector('.pc');if(!card||matchMedia('(prefers-reduced-motion: reduce)').matches)return;const r=card.getBoundingClientRect(),c=card.cloneNode(true);
  c.style.cssText+=`;position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;margin:0;z-index:60;pointer-events:none;--r:0deg;--y:0px`;document.body.append(c);
  const dx=innerWidth/2-r.left-r.width/2,dy=innerHeight*.42-r.top-r.height/2;
  c.animate([{transform:'translate(0,0) scale(1)',opacity:1},{transform:`translate(${dx}px,${dy}px) scale(1.25)`,opacity:1,offset:.55},{transform:`translate(${dx}px,${dy-30}px) scale(1.3)`,opacity:0}],{duration:900,easing:'cubic-bezier(.3,.7,.3,1)'}).onfinish=()=>c.remove()}
+/* another player's played card: the screen dims and the card shows big in the middle for REVEAL_MS, one card at a time */
+const REVEAL_MS=1500; // how long each card stays on screen (also drives the CSS animation)
+let SEEN={k:null,s:0},RQ=[],RBUSY=false; // SEEN = last play already handled, RQ = cards waiting to be shown
+function oppPlays(){if(!G||!G.ps.length)return;const k=G.code||'solo',mx=G.pseq||0;
+ if(SEEN.k!==k||mx<SEEN.s){SEEN={k,s:mx};return} // a new or just-joined game: don't replay older cards
+ for(const e of G.pl||[])if(e.s>SEEN.s&&e.p!==ME)RQ.push(e);SEEN.s=mx;nextReveal()}
+function nextReveal(){if(RBUSY||!RQ.length)return;const e=RQ.shift(),p=G&&G.ps[e.p],cd=CARDS[e.id];if(!p||!cd)return nextReveal();RBUSY=true;
+ const el=document.createElement('div');el.className='orv'+(matchMedia('(prefers-reduced-motion: reduce)').matches?' still':'');
+ el.style.cssText=`--c:${PC[p.i]};--ms:${REVEAL_MS}ms`;el.innerHTML=`<div class="orb"><b>${lname(p)}</b> played</div><div class="pcw">${cardHTML(cd,p)}</div>`;document.body.append(el);
+ setTimeout(()=>{el.remove();RBUSY=false;nextReveal()},REVEAL_MS)}
 /* right click on your hand: sort by cost → type → time in hand */
 const HSORTS=['time in hand','cost','type','custom']; // 'custom' = the order you dragged your hand into
 /* YOUR LAYOUT: which of your 4 Active decks each card is in (top card first) and your custom hand order.
@@ -749,7 +766,7 @@ function viewPlayer(i,keep){if(!G||!G.ps[i])return;const p=G.ps[i];if(!keep)PF={
  modal(`<div class="pv" style="--c:${PC[p.i]}"><div class="pvh">${mono(p.c)}<div><h2>${p.c.n}</h2><small>${p.bot?'Bot':esc(p.name||myName())} · ${p.c.t} · TR ${p.tr}</small></div>${symHTML(p.i,26)}<span class="vp cvp" title="Victory points">${WREATH}<b>${score(p)}</b></span><button onclick="closeModal()">Close</button></div><div class="pvtop"><div class="pvcorp">${corpCardHTML(p.c,p.ci,true)}</div><div class="pvr">${Object.keys(R).map(k=>`<div class="r" style="--c:${RCOL[k]}">${resIcon(k)}<span>${p.res[k]}</span><i>+${k=='cr'?p.tr+p.pr.cr:p.pr[k]}</i></div>`).join('')}</div></div><h3>Cards in play · ${p.tab.length}</h3>${pfBar(p.tab)}${pfGrid(p,p.tab)}</div>`);dismiss()}
 const STDRES={Seeds:'se',Biochar:'bc',Cr:'cr'};
 function stdLabel(l){const m=l.match(/^(\d+) (\w+) → (.*)$/);if(!m||!STDRES[m[2]])return l;return`<span class="sn">${m[1]}</span>${resIcon(STDRES[m[2]])}<span class="sa">→</span><span>${m[3]}</span>`}
-function render(){renderUI();share()}
+function render(){autoKeep();renderUI();share();oppPlays()}
 function renderUI(){if(!G||G.phase!=='play'||!G.ps.length)return;const p=G.ps[ME],b=busy();
  const sgm=(n,t)=>Array.from({length:t},(_,i)=>`<i class="${i<n?'on':i==n?'nxt':''}"></i>`).join(''),
  ck='<svg class="ck" viewBox="0 0 14 14"><circle cx="7" cy="7" r="7" fill="#b9de8c"/><path d="M3.8 7.3l2.2 2.2 4.2-4.6" stroke="#14260f" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
@@ -794,7 +811,7 @@ function renderUI(){if(!G||G.phase!=='play'||!G.ps.length)return;const p=G.ps[ME
  const hn=p.hand.length,avail=Math.min(innerWidth*.9-40,1060),hm=hn>1?Math.min(8,(avail-hn*172.5)/(hn-1)):0,mid=(hn-1)/2,tilt=Math.min(3.4,22/Math.max(hn,1));
  $('#hand').oncontextmenu=cycleSort;$('#hand').innerHTML=`<div class="hh" onclick="tgh()">${hn} CARDS · HOVER TO REVEAL</div><div class="cs">${handOrder(p).map((i,j)=>{const id=p.hand[i],cd=CARDS[id],ok=!b&&canPlay(p,cd),d=j-mid;return`<div class="pcw" data-hi="${id}" style="--u:17.25px;margin-left:${j?hm:0}px" onclick="uiPlay(${i},this)">${cardHTML(cd,p,{no:!ok,need:!b&&!pay(p,cd,0),st:`--r:${(d*tilt).toFixed(1)}deg;--y:${Math.round(d*d*1.4)}px`})}</div>`}).join('')}</div>`;
  G.cells.forEach(drawCell);mark();
- if(myTurn()&&p.draft&&p.draft.length&&!G.over&&!document.querySelector('#modal:not([hidden]) .drf'))draftUI()}
+ if(p.draft&&p.draft.length&&!G.over&&!p.bot&&!preNow()&&!document.querySelector('#modal:not([hidden]) .drf')&&(myTurn()||$('#modal').hidden))draftUI()} // the draft opens for everyone at once; outside your turn it waits until no other window is open
 /* the first player seal (design A1): sun rays around a sprout, the same look as the Next generation seal */
 const SEAL_MARK='<svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="21" cy="22" r="18" fill="#0e1c1961"/><g class="fp-rays"><polygon points="20.00,1.00 22.54,7.25 17.46,7.25" fill="#f3ecd8"/><polygon points="27.27,2.45 27.22,9.19 22.54,7.25" fill="#cbbd97"/><polygon points="33.44,6.56 30.81,12.78 27.22,9.19" fill="#f3ecd8"/><polygon points="37.55,12.73 32.75,17.46 30.81,12.78" fill="#cbbd97"/><polygon points="39.00,20.00 32.75,22.54 32.75,17.46" fill="#f3ecd8"/><polygon points="37.55,27.27 30.81,27.22 32.75,22.54" fill="#cbbd97"/><polygon points="33.44,33.44 27.22,30.81 30.81,27.22" fill="#f3ecd8"/><polygon points="27.27,37.55 22.54,32.75 27.22,30.81" fill="#cbbd97"/><polygon points="20.00,39.00 17.46,32.75 22.54,32.75" fill="#f3ecd8"/><polygon points="12.73,37.55 12.78,30.81 17.46,32.75" fill="#cbbd97"/><polygon points="6.56,33.44 9.19,27.22 12.78,30.81" fill="#f3ecd8"/><polygon points="2.45,27.27 7.25,22.54 9.19,27.22" fill="#cbbd97"/><polygon points="1.00,20.00 7.25,17.46 7.25,22.54" fill="#f3ecd8"/><polygon points="2.45,12.73 9.19,12.78 7.25,17.46" fill="#cbbd97"/><polygon points="6.56,6.56 12.78,9.19 9.19,12.78" fill="#f3ecd8"/><polygon points="12.73,2.45 17.46,7.25 12.78,9.19" fill="#cbbd97"/></g><circle cx="20" cy="20" r="13.6" fill="#244a3e"/><path d="M10.4 29.6A13.6 13.6 0 0 1 29.6 10.4" fill="none" stroke="#6aa88c" stroke-width="1.4"/><circle cx="20" cy="20" r="11.6" fill="#1b372f"/><circle cx="20" cy="20" r="9" fill="none" stroke="#b9de8c" stroke-width="1.1" stroke-opacity=".55"/><g class="fp-spr"><polygon points="19.4,27 20.6,27 20.6,21 19.4,21" fill="#8cc152"/><polygon points="20,22 12.6,16.2 17.2,16.6" fill="#d3efab"/><polygon points="20,22 15.4,21.6 12.6,16.2" fill="#9fcf68"/><polygon points="20,21.4 22.2,16 28.6,13.8" fill="#d3efab"/><polygon points="20,21.4 28.6,13.8 26.2,19.8" fill="#9fcf68"/></g></svg>';
 /* your corporation card fills the space between the player panels and the deck (hidden if there is too little room) */

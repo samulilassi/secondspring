@@ -679,3 +679,13 @@ body.lobby #cnt,body.lobby #set{z-index:60}
 @keyframes fpRays{to{transform:rotate(360deg)}}
 @keyframes fpIn{from{transform:rotate(-120deg) scale(.3);opacity:0}}
 @keyframes fpSpr{from{transform:scale(0)}}
+
+/* another player's card reveal: the screen dims, the card pops up in the middle, then both fade (timing = REVEAL_MS in game.js) */
+.orv{position:fixed;inset:0;z-index:50;pointer-events:none;display:grid;place-content:center;justify-items:center;gap:14px;background:rgba(8,16,13,.55);animation:orvbg var(--ms) ease both}
+.orv .orb{padding:6px 18px;border-radius:999px;background:#13271fe6;border:2px solid var(--c);color:#f3efe0;font:600 15px/1.2 system-ui,sans-serif;box-shadow:0 6px 18px #0007}
+.orv .orb b{color:var(--c)}
+.orv .pcw{--u:min(24px,3.7vh);animation:orvcard var(--ms) cubic-bezier(.2,.9,.3,1.15) both}
+.orv .pc{box-shadow:0 0 0 3px var(--c),0 18px 40px #000a}
+.orv.still .pcw{animation:none}
+@keyframes orvbg{0%{opacity:0}15%{opacity:1}80%{opacity:1}100%{opacity:0}}
+@keyframes orvcard{0%{transform:translateY(40px) scale(.7);opacity:0}18%{transform:none;opacity:1}80%{transform:none;opacity:1}100%{transform:translateY(-20px) scale(.95);opacity:0}}
