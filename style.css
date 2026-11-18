@@ -8,7 +8,7 @@ body:after{content:'';position:fixed;inset:0;pointer-events:none;z-index:1;backg
 @keyframes fog{to{transform:translate(7%,-5%) scale(1.15)}}
 #app>*{position:absolute;z-index:2}
 /* stage: the painted world. 1600x1050 picture, always covers the window; the board sits in its clearing */
-#app>#stage{left:0;top:0;width:100vw;height:100vh;background:url(background.jpg) center/100% 100%;z-index:0}
+#app>#stage{left:0;top:0;width:100vw;height:100vh;background:radial-gradient(ellipse 75% 70% at 50% 50%,#0000 45%,#0b1712aa 100%),radial-gradient(ellipse 34% 42% at 50% 48%,#0b171222 0,#0b171266 70%,#0b171299 100%),url(background.jpg) center/cover no-repeat,#a7ad96;z-index:0} /* picture fills the screen without stretching; darkened (most away from the board) with darker corners. The board is drawn above this, so it stays bright */
 #mist{position:absolute;inset:-6%;pointer-events:none;background:radial-gradient(28% 18% at 32% 62%,#edf3e655,#0000),radial-gradient(30% 16% at 68% 38%,#edf3e644,#0000),radial-gradient(40% 14% at 50% 88%,#d8eee655,#0000);animation:mist 28s ease-in-out infinite alternate}
 @keyframes mist{from{transform:translate(-3%,1%)}to{transform:translate(4%,-2%)}}
 #bd{position:absolute;left:var(--board-x,50%);top:var(--board-y,49%);width:min(var(--board-w,56vw),calc((100vh - 340px)*1.833));aspect-ratio:504/275;height:auto;overflow:visible;transform:translate(-50%,-50%);filter:drop-shadow(0 12px 10px #16241d66)}
@@ -559,9 +559,9 @@ button.sl,button.sl:hover:not(:disabled),button.sl:active:not(:disabled),button.
 #corps .co .mono.ico{background:none;box-shadow:none;border:0}#corps .co .mono.ico img{width:100%;height:100%;object-fit:contain;border-radius:0}
 #corps .co .nm b{font-size:24px}
 #corps .co .sub{font-size:13px}
-#corps .co .cvp{grid-area:v;position:relative;display:grid;place-items:center;width:46px;height:46px;margin:0;opacity:1}
+#corps .co .cvp{grid-area:v;position:relative;display:grid;place-items:center;width:60px;height:60px;margin:-8px -4px -8px 0;opacity:1}
 #corps .co .cvp svg{position:absolute;inset:0;width:100%;height:100%}
-#corps .co .cvp b{position:relative;font:700 17px/1 "SSNum",system-ui,sans-serif;font-synthesis:none;color:#e9e2d0}
+#corps .co .cvp b{position:relative;font:700 22px/1 "SSNum",system-ui,sans-serif;font-synthesis:none;color:#e9e2d0}
 /* your corporation card under the player panels (same design as the pick screen) */
 #mycorp{--cu:.6875px;margin-top:4px;height:calc(360 * var(--cu))}
 #mycorp .corp-card{--u:var(--cu);cursor:default}
@@ -584,8 +584,15 @@ button.sl,button.sl:hover:not(:disabled),button.sl:active:not(:disabled),button.
 #res .rx b{font:700 19px/1 "SSNum",system-ui,sans-serif;font-synthesis:none}
 #res .rx img{width:24px;height:24px;display:block}
 #res .rx .eq{width:15px;height:13px;margin:0 2px;filter:drop-shadow(0 1px 0 #0006)}
-#res .rp{padding:2px 10px;border-radius:999px;font:700 11px system-ui,sans-serif;line-height:1.5;min-height:0}
-#res .rp.rdy{background:var(--lime);color:#14260f;border-color:var(--lime)}
+#res .rp{display:flex;align-items:center;gap:3px;padding:2px 10px 2px 9px;min-height:0;border-radius:10px;border:1px solid #b9de8c55;
+ background:linear-gradient(#24443a,#16302a);box-shadow:inset 0 1px 0 #ffffff1f,0 2px 4px #0006;color:#cfe3c4;cursor:pointer;transition:transform .12s,box-shadow .2s,background .2s}
+#res .rp b{font:700 15px/1 "SSNum",system-ui,sans-serif;font-synthesis:none}
+#res .rp img{width:20px;height:20px;display:block}#res .rp img.tile{width:26px;height:24px;object-fit:contain;margin:-3px -2px -3px 0}
+#res .rp .ar{width:12px;height:11px;opacity:.85}
+#res .rp.rdy{background:linear-gradient(#cfeea6,#9fcf68);border-color:#e6f7cf;color:#14260f;box-shadow:inset 0 1px 0 #ffffff99,0 0 0 2px #b9de8c55,0 3px 8px #0007}
+#res .rp.rdy:hover{transform:translateY(-1px);box-shadow:inset 0 1px 0 #ffffffaa,0 0 0 3px #b9de8c77,0 5px 12px #0008}
+#res .rp.rdy:active{transform:translateY(1px)}
+#res .rp:disabled{opacity:1;cursor:not-allowed;filter:saturate(.35) brightness(.8)}
 #std{display:none}
 
 /* ---- playing card background: darker paper with a faded spot from a scene picture (see CARD_SCENES in game.js) ---- */
@@ -611,3 +618,41 @@ button.sl,button.sl:hover:not(:disabled),button.sl:active:not(:disabled),button.
  clip-path:polygon(.3em 0,calc(100% - .3em) 0,100% .3em,100% calc(100% - .3em),calc(100% - .3em) 100%,.3em 100%,0 calc(100% - .3em),0 .3em)}
 .pc .ix{isolation:isolate}
 body.lobby #cnt,body.lobby #set{z-index:60}
+
+/* darker corners: the page, and very slightly the card pictures */
+
+.pc .cai::after{content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;background:radial-gradient(ellipse 80% 75% at 50% 50%,#0000 60%,#1b140c40 100%)}
+/* profile view: victory point wreath, and no visible scroll bar */
+.pvh .cvp{position:relative;display:grid;place-items:center;width:58px;height:58px;margin-left:auto}
+.pvh .cvp svg{position:absolute;inset:0;width:100%;height:100%}
+.pvh .cvp b{position:relative;font:700 22px/1 "SSNum",system-ui,sans-serif;font-synthesis:none;color:#e9e2d0}
+.pv,.cpg{scrollbar-width:none}.pv::-webkit-scrollbar,.cpg::-webkit-scrollbar{display:none}
+/* Settings → Cards page */
+.cpg{width:min(1180px,95vw);max-height:90vh;overflow:auto;display:grid;gap:12px;padding:22px 26px;background:var(--panel);border:1px solid var(--line);border-radius:16px;text-align:left;box-shadow:0 20px 50px #000a}
+.cph{display:flex;align-items:center;justify-content:space-between}.cph h2{font:600 24px var(--serif);color:var(--bone)}.cph h2 small{font:13px system-ui,sans-serif;color:#a9bfb3;margin-left:8px}
+.cpf{display:grid;gap:8px;position:sticky;top:-22px;z-index:3;margin:0 -26px;padding:10px 26px;background:var(--panel)}
+.cpr{display:flex;flex-wrap:wrap;gap:6px}
+.cpb{display:flex;align-items:center;gap:6px;padding:4px 11px 4px 5px;border-radius:999px;border:1px solid #ffffff22;background:#ffffff0d;color:#dfe9e2;font:600 12px system-ui,sans-serif;cursor:pointer}
+.cpb img{width:24px;height:24px}.cpb.ty{padding-left:9px}.cpb.ty i{width:12px;height:12px;border-radius:3px;background:var(--tc)}
+.cpb:hover{background:#ffffff1a}.cpb.on,.cpb.on:hover{background:#b9de8c;color:#14260f;border-color:#e6f7cf}.cpb.clr{padding-left:11px;color:#f2c9b3}
+.cpg .pcg .pcw{--u:15px}
+.pvh .cvp b{background:none;border:0;padding:0;box-shadow:none;min-width:0}
+/* card name box grows to fit two-line names */
+.pc .cpl{height:auto;min-height:1.75em}.pc .cpl h4{padding:.16em .45em .18em}
+/* card pictures: soft darkening at the edges and corners */
+.pc .cai::after{background:radial-gradient(ellipse 78% 72% at 50% 45%,#0000 52%,#1b140c66 100%);box-shadow:inset 0 0 .9em #1b140c55}
+/* ---------- 220-card update: requirement chip, tokens, synergy icons in effects, keep-3 draft ---------- */
+.pc .syi{display:inline-block;width:1.45em;height:1.45em;vertical-align:middle;filter:drop-shadow(0 .05em .08em #0006)}
+.pc .crq{position:absolute;left:.4em;bottom:.4em;z-index:3;display:inline-flex;align-items:center;gap:.2em;padding:.18em .45em;border-radius:.6em;background:#f1e9d2ee;border:.08em solid #1d2a24;color:#2b3a32;font:700 .62em/1 system-ui,sans-serif;font-style:normal;white-space:nowrap;box-shadow:0 1px 3px #0005}
+.pc .crq .n{font-family:"SSNum",system-ui,sans-serif;font-size:1.25em}.pc .crq .ts img,.pc .crq .syi{width:1.5em;height:1.5em}.pc .crq .tl{width:1.6em;height:1.4em}
+.pc .crq.bad{background:#b04a3a;color:#fff;border-color:#5e1d14}
+.pc .cnc{bottom:2.6em}
+.tkn{display:inline-block;width:1em;height:1em;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff6c8,#e0b33a 55%,#8f6514);border:.08em solid #4a3208;vertical-align:middle;box-shadow:0 .05em .1em #0006}
+.pc .ctk{position:absolute;right:.45em;top:2.3em;z-index:3;display:inline-flex;align-items:center;gap:.25em;padding:.2em .5em;border-radius:1em;background:#13271fe6;color:#fff3c4;font:700 .7em/1 system-ui,sans-serif;font-style:normal}
+.drf{width:min(980px,95vw);max-height:92vh;overflow:auto;display:grid;gap:12px;justify-items:center;text-align:center;padding:22px 26px;background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 50px #000a}
+.drf h2{font:500 24px var(--serif);color:var(--bone);margin:0}.drf p{margin:0;opacity:.8}
+.drf .pcw{cursor:pointer;transition:transform .15s}.drf .pcw:hover{transform:translateY(-4px)}
+.drf .pcw.sel .pc{outline:.22em solid #b9de8c;outline-offset:.15em;box-shadow:0 0 0 .4em #b9de8c55,0 8px 20px #000a}
+.drf button:disabled{opacity:.5;cursor:default}
+#ask .undo+.undo{margin-left:6px}
+.pc.lf .fx{font-size:.74em;gap:.1em .45em}.pc.lf2 .fx{font-size:.64em;gap:.05em .4em;padding:.15em .3em}
