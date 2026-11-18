@@ -260,7 +260,7 @@ Salvage Rights Auction|5|E|recycling||Qsa3 Gcr2|The highest bidder takes the scr
 const D=[[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
 const shuf=a=>a.map(x=>[Math.random(),x]).sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-let ME=0,NET=null,BOARD=null,PICKUI=false,RUNNING=false,UNDO=null,LASTCUR,HSORT=0,LASTMOVE=Date.now(); // ME = your seat in the game (0 in solo); NET = online lobby connection
+let HELPFIRST=null,ME=0,NET=null,BOARD=null,PICKUI=false,RUNNING=false,UNDO=null,LASTCUR,HSORT=0,LASTMOVE=Date.now(); // ME = your seat in the game (0 in solo); NET = online lobby connection
 let G,AC,MG,NAME=localStorage.ss_name||'',vol=+(localStorage.ss_vol??.15);const KV=.87,U=.22563,FY=129*U/46.5*KV,RI={cr:'Cr',sa:'Fe',re:'Re',se:'Sd',fc:'Fc',bc:'C'};
 
 /* ---------- SOUND (synthesised, no files needed) ---------- */
@@ -384,9 +384,9 @@ function val(cd){const L=Math.min(7,Math.max(1,13-G.gen));let v=0;
   else if(a=='T')v+=(b=='co'?G.t.co>0:b=='so'?G.t.so<14:G.t.we<9)?5:0;else if(a=='L')v+={f:5,w:5,s:4,p:3,c:2.5,r:2}[b];else if(a=='D')v+=+b*1.5;else if(a=='V')v+=+b*3;
   else if(a=='Q'||a=='X'||a=='Z')v+=W[b.slice(0,2)]*n*(a=='Z'?2:.7)+1;else v+=1}
  return v}
-/* each generation a bot keeps the 3 best of the 5 cards it sees */
+/* a bot keeps the best cards it sees: 5 of 10 at the start, 3 of 5 each generation (p.keep says how many) */
 const bv=(p,id)=>val(CARDS[id])/(1+cost(p,CARDS[id])/12);
-function botDraft(p){keepDraft(p,[...p.draft].sort((a,b)=>bv(p,b)-bv(p,a)).slice(0,3))}
+function botDraft(p){keepDraft(p,[...p.draft].sort((a,b)=>bv(p,b)-bv(p,a)).slice(0,p.keep||3))}
 function keepDraft(p,keep){p.hand.push(...keep);G.disc.push(...p.draft.filter(x=>!keep.includes(x)));p.draft=null}
 function bpick(p,t){let best,bs=-9;for(const c of valid(t)){const n=nb(c);let s=Math.random()*1.5;
  if(t=='s')s+=n.filter(x=>x.t=='f'||x.t=='w').length*2;
@@ -406,7 +406,7 @@ async function botTurn(p){const g=G;if(p.draft&&p.draft.length)botDraft(p);
 let NB=3;
 function mk(i,ci,bot,name){const c=CORPS[ci],p={i,ci,c,bot,name:name||'',tr:TR0,vp:0,hand:[],tab:[],used:[],tok:{},sp:{},draft:null,
  res:{cr:c.cr,sa:0,re:0,se:0,fc:0,bc:0,...c.st},pr:{cr:0,sa:0,re:0,se:0,fc:0,bc:0,...c.pr}};
- draw(p,8);return p} // everyone starts with 8 cards
+ p.draft=[];for(let k=0;k<10;k++){const d=deal();if(d!=null)p.draft.push(d)}p.keep=5;if(bot)botDraft(p);return p} // everyone starts by seeing 10 cards and keeping 5
 const modal=h=>{const m=$('#modal');m.onclick=null;m.innerHTML=h;m.hidden=false},closeModal=()=>{$('#modal').hidden=true};
 const chips=c=>[`<b>${c.cr}</b> Credits`,...Object.entries(c.st||{}).map(([k,v])=>`<b>${v}</b> ${R[k]}`),...Object.entries(c.pr||{}).map(([k,v])=>`<b>+${v}</b> ${R[k]} prod`)].map(x=>`<span>${x}</span>`).join('');
 /* names = the people in the game (seats 0,1,...); bots take the seats after them */
@@ -423,7 +423,10 @@ function buildBoard(){
  $('#cells').innerHTML=G.cells.map(c=>`<g id="h${c.id}" class="cell" transform="translate(${c.x},${c.y})" onclick="clk(${c.id})"><title></title><g class="gr">${groundSVG(c.id)}</g><polygon class="hx" points="${P}"/><g class="tl"></g><polygon class="hl" points="${P}" fill="url(#stp)"/><polygon class="hb" points="${P}"/></g>`).join('');
  G.cells.forEach(c=>{delete c.dk;drawCell(c)});BOARD=G.code;$('#lob').hidden=true;$('#set').hidden=true}
 /* corporation choice: people choose one after another (seat 0 first), then bots get the corporations that are left */
-function pickScreen(){PICKUI=true;if(G.pick===ME)showPick();
+function pickScreen(){PICKUI=true;
+ if(HELPFIRST!==G.code){HELPFIRST=G.code;help(true);return} // first, show How to play once per game
+ if(document.querySelector('#modal:not([hidden]) .help.first'))return; // still reading it: don't cover it
+ if(G.pick===ME)showPick();
  else modal(`<div class="pickp"><h2>Choose your corporation</h2><p>Waiting for <b>${esc(G.seats[G.pick].name)}</b> to choose a corporation…</p></div>`)}
 function showPick(){modal(`<div class="pickp"><h2>Choose your corporation</h2><p>Three charters were offered to you. The other corporations go to your rivals.</p><div class="cards3">${G.offer.map(ci=>{const c=CORPS[ci];return corpCardHTML(c,ci)}).join('')}</div></div>`)}
 function choose(ci){if(!G||G.phase!=='pick'||G.pick!==ME||!G.offer.includes(ci))return;
@@ -432,17 +435,17 @@ function choose(ci){if(!G||G.phase!=='pick'||G.pick!==ME||!G.offer.includes(ci))
  const rest=shuf([0,1,2,3,4,5].filter(i=>!G.taken.includes(i)));
  for(let i=humans;i<G.seats.length;i++)G.ps[i]=mk(i,rest[i-humans],true);
  G.phase='play';G.ti=0;G.cur=order()[0].i;PICKUI=false;
- document.body.className='';closeModal();log('Generation 1 begins');sfx('card');render();deckAnim(8);runBots()}
+ document.body.className='';closeModal();log('Generation 1 begins');sfx('card');render();runBots()}
 function adv(){while(G.pend.length&&typeof G.pend[0]=='string'&&!valid(G.pend[0]).length)G.pend.shift();render()}
 function clk(i){if(!myTurn()||G.over||!G.pend.length)return;const c=G.cells[i],t=G.pend[0];if(typeof t!='string'||!valid(t).includes(c))return;G.pend.shift();UNDO=null;place(G.ps[ME],c,t);adv()}
 /* a card that hits a rival: you pick which rival */
 function uiRival(i){if(!myTurn()||G.over)return;const it=G.pend[0];if(!it||typeof it=='string'||!G.ps[i]||i===ME)return;G.pend.shift();UNDO=null;hitRival(G.ps[ME],it.rv,it.r,it.n,G.ps[i]);adv()}
-/* each generation you see 5 cards and keep 3; the rest go to the discard pile */
+/* at the start you see 10 cards and keep 5, each generation you see 5 and keep 3; the rest go to the discard pile */
 let DSEL=[];
-function draftUI(){const p=G.ps[ME];if(!p.draft||!p.draft.length)return;const need=Math.min(3,p.draft.length);DSEL=DSEL.filter(x=>p.draft.includes(x));
+function draftUI(){const p=G.ps[ME];if(!p.draft||!p.draft.length)return;const need=Math.min(p.keep||3,p.draft.length);DSEL=DSEL.filter(x=>p.draft.includes(x));
  modal(`<div class="drf"><h2>Choose ${need} card${need>1?'s':''} to keep</h2><p>${p.draft.length>need?`The other ${p.draft.length-need} go to the discard pile.`:'Click the cards to keep them.'}</p><div class="pcg">${p.draft.map(id=>`<div class="pcw${DSEL.includes(id)?' sel':''}" onclick="drTog(${id})">${cardHTML(CARDS[id],p,{})}</div>`).join('')}</div><button class="pri" ${DSEL.length==need?'':'disabled'} onclick="drKeep()">Keep ${DSEL.length} / ${need}</button></div>`)}
-function drTog(id){const p=G.ps[ME];if(!p.draft)return;const need=Math.min(3,p.draft.length);if(DSEL.includes(id))DSEL=DSEL.filter(x=>x!==id);else if(DSEL.length<need)DSEL.push(id);draftUI()}
-function drKeep(){const p=G.ps[ME];if(!p.draft||!myTurn())return;const need=Math.min(3,p.draft.length);if(DSEL.length!=need)return;keepDraft(p,DSEL);DSEL=[];closeModal();deckAnim(need);render()}
+function drTog(id){const p=G.ps[ME];if(!p.draft)return;const need=Math.min(p.keep||3,p.draft.length);if(DSEL.includes(id))DSEL=DSEL.filter(x=>x!==id);else if(DSEL.length<need)DSEL.push(id);draftUI()}
+function drKeep(){const p=G.ps[ME];if(!p.draft||!myTurn())return;const need=Math.min(p.keep||3,p.draft.length);if(DSEL.length!=need)return;keepDraft(p,DSEL);DSEL=[];closeModal();deckAnim(need);render()}
 function uiPlay(i,el){if(busy())return;const p=G.ps[ME];if(!canPlay(p,CARDS[p.hand[i]]))return sfx('err');UNDO=null;if(el)playAnim(el);play(p,i);adv()}
 /* a played card lifts to the middle of the screen and fades out */
 function playAnim(el){const card=el.querySelector('.pc');if(!card||matchMedia('(prefers-reduced-motion: reduce)').matches)return;const r=card.getBoundingClientRect(),c=card.cloneNode(true);
@@ -462,7 +465,7 @@ function undo(){if(!UNDO||!myTurn())return;G=hydrate(UNDO);UNDO=null;G.cells.for
 const order=()=>{const n=G.ps.length,s=(G.gen-1)%n;return G.ps.map((_,i)=>G.ps[(s+i)%n])};
 const pname=p=>p.bot?p.c.n.split(' ')[0]:p.name||myName();
 function income(){for(const p of G.ps){const r=p.res;r.bc+=r.fc;r.fc=0;r.cr+=p.tr+p.pr.cr;for(const k of['sa','re','se','fc','bc'])r[k]=Math.max(0,r[k]+p.pr[k]);p.used=[];
-  p.draft=[];for(let i=0;i<5;i++){const c=deal();if(c!=null)p.draft.push(c)}if(p.bot)botDraft(p)}
+  p.draft=[];for(let i=0;i<5;i++){const c=deal();if(c!=null)p.draft.push(c)}p.keep=3;if(p.bot)botDraft(p)}
  G.gen++;log(`Generation ${G.gen} begins`);sfx('gen')}
 /* pass the turn to the next player; after the last one, income arrives and a new generation starts. Returns false when the game ends */
 function nextSeat(){G.ti++;
@@ -521,7 +524,7 @@ async function poll(){const n=NET;if(!n)return;
  catch(e){if(NET===n&&(e.status===404||e.status===403)){lobby();$('#lm').innerHTML='<small>The lobby has closed.</small>';return}}
  finally{if(NET===n)n.timer=setTimeout(poll,900)}}
 /* the first person in seat order who is still playing runs the bots; the next one watches the clock */
-const IDLE_MS=3*60*1000; // a player who makes no move for this long is replaced by a bot
+const IDLE_MS=6*60*1000; // a player who makes no move for this long is replaced by a bot
 const runnerSeat=()=>{const h=G.ps.find(p=>p&&!p.bot);return h?h.i:-1};
 function idleCheck(){if(!G||G.phase!=='play'||G.over||G.cur==null||RUNNING)return;const cp=G.ps[G.cur];if(!cp||cp.bot||G.cur===ME||Date.now()-LASTMOVE<IDLE_MS)return;
  const w=G.ps.find(p=>p&&!p.bot&&p.i!==G.cur);if(!w||w.i!==ME)return;
@@ -535,7 +538,7 @@ function applyState(t){const was=G;NET.applying=true;
  runBots()}
 function setp(){const s=$('#set');s.hidden=!s.hidden;fillSet()}
 function fillSet(){$('#set').innerHTML=`<b>Settings</b><label>Music volume <span id="vl">${Math.round(vol*100)}%</span><input type="range" min="0" max="100" value="${Math.round(vol*100)}" oninput="setVol(this.value)"></label><button onclick="help()">How to play</button><button onclick="cardsPage()">Cards</button>${G?`<button onclick="lobby()">Leave to lobby</button><small>Lobby code: ${G.code}</small>`:''}`}
-function help(){$('#set').hidden=true;
+function help(first){$('#set').hidden=true; // first = shown before choosing a corporation
  const I={co:`<span class="il">${tIcon('co')}</span>`,so:`<span class="il">${tIcon('so')}</span>`,we:`<span class="il">${tIcon('we')}</span>`},
  hx=n=>TILEDATA[n]?`<svg class="hxi" viewBox="-34 -32 68 61"><use href="#ti-${n}"/></svg>`:'',
  rc=k=>`<span style="--c:${RCOL[k]}">${resIcon(k)}</span>`,
@@ -578,7 +581,8 @@ function help(){$('#set').hidden=true;
  +`<div class="hcl wide"><div class="hic"><span class="ef"><span class="tx">Action</span><span class="n">2</span>${rc('bc')}<span class="tx">→</span><span class="n">+</span>${tIcon('so')}</span></div><b>Action</b><span class="ht">Active cards only. Once per generation, pay the left side to get the right side.</span></div>`
  +`<div class="htys">${ty('#E8871E','Event','played once')}${ty('#4CBB17','Build','stays in play')}${ty('#0047AB','Active','an Action each generation')}</div>`),
  std=sec('Standard projects',`<div class="hsp">${Object.values(STD).map(s=>`<span class="pl">${stdLabel(s.l)}</span>`).join('')}</div>`,'In the resource bar, under Seeds and Biochar. Both move a track (+1 {TR}).');
- modal(`<div class="help"><div class="hph"><h2>How to play</h2><p>Second Spring: bring a wrecked world back to life, and finish with the most points.</p><button class="pri" onclick="closeModal()">Got it</button></div><div class="hpb"><div class="hpc">${goal}${path}${std}</div><div class="hpc">${loop}${vp}</div><div class="hpc">${res}${tiles}</div><div class="hpc">${card}</div></div></div>`.replace(/\{TR\}/g,'<span class="htr" title="Terraform rating">TR</span>').replace(/\{VP(L)?(?::(\w+))?\}/g,(m,l,n)=>`<span class="hvp${l?' lg':''}" title="Victory points">${WREATH}${n?`<span class="hvn">${n}</span>`:''}</span>`));dismiss()}
+ modal(`<div class="help${first?' first':''}"><div class="hph"><h2>How to play</h2><p>Second Spring: bring a wrecked world back to life, and finish with the most points.</p><button class="pri" onclick="${first?'helpDone()':'closeModal()'}">Got it</button></div><div class="hpb"><div class="hpc">${goal}${path}${std}</div><div class="hpc">${loop}${vp}</div><div class="hpc">${res}${tiles}</div><div class="hpc">${card}</div></div></div>`.replace(/\{TR\}/g,'<span class="htr" title="Terraform rating">TR</span>').replace(/\{VP(L)?(?::(\w+))?\}/g,(m,l,n)=>`<span class="hvp${l?' lg':''}" title="Victory points">${WREATH}${n?`<span class="hvn">${n}</span>`:''}</span>`));if(!first)dismiss()}
+function helpDone(){closeModal();if(G&&G.phase==='pick')pickScreen()}
 const tgh=()=>$('#hand').classList.toggle('open');
 
 /* ---------- RENDER ---------- */

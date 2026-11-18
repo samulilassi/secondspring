@@ -92,7 +92,7 @@ Keep pictures small: about 2× the size they appear on screen. Friends load ever
   All three full, or generation 15, ends the game.
 - **Resources:** Credits, Salvage, Rare minerals, Seeds, Fusion Cells, Biochar (Fusion Cells become Biochar at income).
   Standard projects: Forest (8 Seeds), Soil (8 Biochar).
-- **Cards:** 220 cards — 115 Build, 63 Active, 42 Event. Everyone starts with 8; each generation you see 5 and keep 3;
+- **Cards:** 220 cards — 115 Build, 63 Active, 42 Event. At the start everyone sees 10 and keeps 5; each generation you see 5 and keep 3;
   unkept cards go to a discard pile that is reshuffled into the deck. No hand limit.
 - **Synergies** are the only card categories: Industry (Salvage pays 2 Cr), Engine (Rare mineral pays 3 Cr),
   Science, Recycling (all ruin clearing), Power (all Fusion Plant placing), Fusion Cell, Soil, Clean Air,
