@@ -339,7 +339,9 @@ const valid=t=>{let v=G.cells.filter(c=>t=='r'?c.t=='R':!c.t);if(t=='s')v=v.filt
 const myTurn=()=>G&&G.phase==='play'&&G.cur===ME&&G.ps[ME]&&!G.ps[ME].bot;
 const busy=()=>!G||G.pend.length>0||!myTurn()||G.over||!!(G.ps[ME].draft&&G.ps[ME].draft.length);
 /* discounts from your Active cards and your corporation: K{industry:2} = Industry cards cost 2 less, K{all:1} = every card, K{E:2} = Event cards (E/B/A = card type) */
-function disc(p,cd){let d=0;for(const t of[...(p.tab||[]).flatMap(id=>CARDS[id].f),...corpFx(p)]){const m=t.match(/^K\{(\w+):(\d+)\}$/);if(m&&(m[1]=='all'||m[1]==cd.y||cd.s.includes(m[1])))d+=+m[2]}return d}
+/* discList = every discount that applies, with where it comes from (shown on the payment window); disc = their sum */
+function discList(p,cd){const l=[];for(const[n,f]of[...(p.tab||[]).map(id=>[CARDS[id].n,CARDS[id].f]),[p.c&&p.c.n,corpFx(p)]])for(const t of f){const m=t.match(/^K\{(\w+):(\d+)\}$/);if(m&&(m[1]=='all'||m[1]==cd.y||cd.s.includes(m[1])))l.push({n,v:+m[2]})}return l}
+const disc=(p,cd)=>discList(p,cd).reduce((d,x)=>d+x.v,0);
 const cost=(p,cd)=>Math.max(0,cd.c-disc(p,cd));
 const ownT=(p,t)=>G.cells.filter(c=>c.t==t&&c.o===p.i).length;
 /* requirements: track levels (co>=8, so<=7, we>=2), synergy cards already played (syn.science>=3) or owning a Fusion Plant (own.p) */
@@ -356,8 +358,15 @@ function cardVP(p){let v=0;for(const[id,f]of[...p.tab.map(id=>[id,CARDS[id].f]),
  if(m=t.match(/^VS\{(.+):(\d+)\}$/)){const k=m[1],n=k.startsWith('syn.')?(p.sp[k.slice(4)]||0):ownT(p,k);v+=Math.floor(n/+m[2])}
  else if(m=t.match(/^VT(\d+)$/))v+=Math.floor(((p.tok||{})[id]||0)/+m[1])}return v}
 /* the deck: when it runs out, the discard pile (cards not kept from the 5 seen each generation) is shuffled back in */
-const deal=()=>{if(!G.deck.length&&G.disc&&G.disc.length){G.deck=shuf(G.disc);G.disc=[];log('The discard pile is shuffled into the deck')}return G.deck.pop()};
-const draw=(p,n)=>{const h=p.hand.length;while(n-->0){const c=deal();if(c==null)break;p.hand.push(c)}if(!p.bot&&G&&G.ps[ME]===p)deckAnim(p.hand.length-h)};
+const deal1=()=>{if(!G.deck.length&&G.disc&&G.disc.length){G.deck=shuf(G.disc);G.disc=[];log('The discard pile is shuffled into the deck')}return G.deck.pop()};
+/* tile limits: you can have at most this many Settlements / Wildlife Corridors. Counts tiles you own + cards in your hand and draft that place one.
+   The more you have, the rarer those cards get when YOU draw: 0 → normal, 1 → 2/3 chance, 2 → 1/3, 3 → never. A skipped card goes to the bottom of the deck for others. */
+const TILE_CAP={s:3,c:3};
+const capHave=(p,t)=>ownT(p,t)+[...p.hand,...(p.draft||[])].filter(id=>CARDS[id].f.includes('L'+t)).length;
+const keepOdds=(p,id)=>{let k=1;for(const t in TILE_CAP)if(CARDS[id].f.includes('L'+t))k=Math.min(k,Math.max(0,TILE_CAP[t]-capHave(p,t))/TILE_CAP[t]);return k};
+const deal=p=>{if(!p)return deal1();const skip=[];let c=null,n=G.deck.length+((G.disc&&G.disc.length)||0);
+ while(n-->0){const d=deal1();if(d==null)break;if(Math.random()<keepOdds(p,d)){c=d;break}skip.push(d)}G.deck.unshift(...skip);return c};
+const draw=(p,n)=>{const h=p.hand.length;while(n-->0){const c=deal(p);if(c==null)break;p.hand.push(c)}if(!p.bot&&G&&G.ps[ME]===p)deckAnim(p.hand.length-h)};
 /* card actions: A{fc4:Tco} = pay 4 Fusion Cells, lower CO2 by 1. Once per generation */
 const aparse=id=>{const t=CARDS[id].f.find(t=>t.startsWith('A{'));if(!t)return null;const[c,g]=t.slice(2,-1).split(':');return{c:c?c.split(','):[],g:g.split(',')}};
 const canAct=(p,id)=>{const a=aparse(id);return!!a&&a.c.every(x=>p.res[x.slice(0,2)]>=+x.slice(2))};
@@ -437,7 +446,7 @@ async function botTurn(p){const g=G;if(p.draft&&p.draft.length)botDraft(p);
 let NB=3;
 function mk(i,ci,bot,name){const c=CORPS[ci],p={i,ci,c,bot,name:name||'',tr:TR0,vp:0,hand:[],tab:[],ev:[],used:[],tok:{},sp:{},draft:null,
  res:{cr:c.cr,sa:0,re:0,se:0,fc:0,bc:0,...c.st},pr:{cr:0,sa:0,re:0,se:0,fc:0,bc:0,...c.pr}};
- p.draft=[];for(let k=0;k<10;k++){const d=deal();if(d!=null)p.draft.push(d)}p.keep=5;for(let k=0;k<(c.cards||0);k++){const d=deal();if(d!=null)p.hand.push(d)}if(bot)botDraft(p);return p} // everyone starts by seeing 10 cards and keeping 5
+ p.draft=[];for(let k=0;k<10;k++){const d=deal(p);if(d!=null)p.draft.push(d)}p.keep=5;for(let k=0;k<(c.cards||0);k++){const d=deal(p);if(d!=null)p.hand.push(d)}if(bot)botDraft(p);return p} // everyone starts by seeing 10 cards and keeping 5
 const modal=h=>{const m=$('#modal');m.onclick=null;m.innerHTML=h;m.hidden=false},closeModal=()=>{$('#modal').hidden=true};
 const chips=c=>[`<b>${c.cr}</b> Credits`,...Object.entries(c.st||{}).map(([k,v])=>`<b>${v}</b> ${R[k]}`),...Object.entries(c.pr||{}).map(([k,v])=>`<b>+${v}</b> ${R[k]} prod`)].map(x=>`<span>${x}</span>`).join('');
 /* names = the people in the game (seats 0,1,...); bots take the seats after them */
@@ -488,8 +497,9 @@ function uiPlay(i,el){if(busy())return;const p=G.ps[ME],cd=CARDS[p.hand[i]];if(!
  UNDO=null;if(el)playAnim(el);play(p,i);adv()}
 /* payment window: shows what the card costs and lets you change how many Salvage / Rare minerals (or Seeds) to use; Credits pay the rest */
 let PAY=null;
-function payUI(){const p=G.ps[ME],cd=CARDS[p.hand[PAY.i]],{u,cr}=payPlan(p,cd,PAY.plan),ok=p.res.cr>=cr;PAY.plan=u;
- modal(`<div class="pay"><h2>Pay for ${esc(cd.n)}</h2><div class="pcw">${cardHTML(cd,p)}</div><div class="pyl">
+function payUI(){const p=G.ps[ME],cd=CARDS[p.hand[PAY.i]],{u,cr}=payPlan(p,cd,PAY.plan),ok=p.res.cr>=cr,dl=discList(p,cd);PAY.plan=u;
+ modal(`<div class="pay"><h2>Pay for ${esc(cd.n)}</h2><div class="pcw">${cardHTML(cd,p)}</div>
+ <div class="pyp"><div><span>Card price</span><b>${cd.c}</b></div>${dl.map(x=>`<div class="dsc"><span>Discount<small>${esc(x.n||'')}</small></span><b>−${x.v}</b></div>`).join('')}<div class="tot"><span>Total price</span><b>${cost(p,cd)}</b></div></div><div class="pyl">
  ${payWays(p,cd).map(({r,v})=>`<div class="pyr" style="--c:${RCOL[r]}">${resIcon(r)}<span>${R[r]}<small>pays ${v} each · you have ${p.res[r]}</small></span><button ${u[r]>0?'':'disabled'} onclick="payStep('${r}',-1)" aria-label="Use one less">−</button><b>${u[r]}</b><button ${u[r]<p.res[r]&&cr>0?'':'disabled'} onclick="payStep('${r}',1)" aria-label="Use one more">+</button></div>`).join('')}
  <div class="pyr" style="--c:${RCOL.cr}">${resIcon('cr')}<span>Credits<small>you have ${p.res.cr}</small></span><b class="${ok?'':'bad'}">${cr}</b></div></div>
  <div class="pyb"><button onclick="PAY=null;closeModal()">Cancel</button><button class="pri" ${ok?'':'disabled'} onclick="payGo()">Pay and play</button></div></div>`);dismiss()}
@@ -540,7 +550,7 @@ const pname=p=>p.bot?p.c.n.split(' ')[0]:p.name||myName();
 /* name shown in "The returning world": the player's in-game name, same as on the player panels */
 const lname=p=>p.bot?(p.name?esc(p.name)+' (bot)':'Bot '+p.i):esc(p.name||myName());
 function income(){for(const p of G.ps){const r=p.res;r.bc+=r.fc*(p.c.fcbc||1);r.fc=0;r.cr+=p.tr+p.pr.cr;for(const k of['sa','re','se','fc','bc'])r[k]=Math.max(0,r[k]+p.pr[k]);p.used=[];
-  p.draft=[];for(let i=0;i<(p.c.see||5);i++){const c=deal();if(c!=null)p.draft.push(c)}p.keep=3;if(p.bot)botDraft(p)}
+  p.draft=[];for(let i=0;i<(p.c.see||5);i++){const c=deal(p);if(c!=null)p.draft.push(c)}p.keep=3;if(p.bot)botDraft(p)}
  G.gen++;log(`Generation ${G.gen} begins`);sfx('gen')}
 /* pass the turn to the next player; after the last one, income arrives and a new generation starts. Returns false when the game ends */
 function nextSeat(){G.ti++;
@@ -867,6 +877,7 @@ function renderUI(){if(!G||G.phase!=='play'||!G.ps.length)return;const p=G.ps[ME
  const EQ='<svg class="eq" viewBox="0 0 16 14" aria-hidden="true"><path d="M1 2.5H15L13.6 5.5H2.4Z" fill="#d3efab"/><path d="M1 2.5H8V5.5H2.4Z" fill="#f2fbe4"/><path d="M1 8.5H15L13.6 11.5H2.4Z" fill="#9fcf68"/><path d="M1 8.5H8V11.5H2.4Z" fill="#d3efab"/></svg>';
  const RX={sa:`<em class="rx" title="1 Salvage pays 2 Credits toward Industry cards"><b>2</b><img src="resources/credits.png" alt="Cr">${EQ}<img src="ui/syn/industry.svg" alt="Industry"></em>`,
   re:`<em class="rx" title="1 Rare mineral pays 3 Credits toward Engine cards"><b>3</b><img src="resources/credits.png" alt="Cr">${EQ}<img src="ui/syn/engine.svg" alt="Engine"></em>`,
+  fc:`<em class="rx fcx" title="At the end of each generation, every Fusion Cell you have turns into ${p.c.fcbc||1} Biochar"><img src="resources/${RFILE.fc}.png" alt="Fusion Cell"><svg class="ar" viewBox="0 0 14 12" aria-hidden="true"><path d="M1 4.5H8V1.5L13 6L8 10.5V7.5H1Z" fill="currentColor"/></svg><b>${p.c.fcbc||1}</b><img src="resources/${RFILE.bc}.png" alt="Biochar"><small>end of gen</small></em>`,
   se:`<button class="rp${!b&&STD.f.ok(p)?' rdy':''}" ${!b&&STD.f.ok(p)?'':'disabled'} onclick="std('f')" title="Standard project: 8 Seeds → place a Forest"><b>8</b><img src="resources/${RFILE.se}.png" alt="Seeds"><svg class="ar" viewBox="0 0 14 12" aria-hidden="true"><path d="M1 4.5H8V1.5L13 6L8 10.5V7.5H1Z" fill="currentColor"/></svg><img class="tile" src="tile-art/forest.png" alt="Forest"></button>`,
   bc:`<button class="rp${!b&&STD.so.ok(p)?' rdy':''}" ${!b&&STD.so.ok(p)?'':'disabled'} onclick="std('so')" title="Standard project: 8 Biochar → raise Soil by 1"><b>8</b><img src="resources/${RFILE.bc}.png" alt="Biochar"><svg class="ar" viewBox="0 0 14 12" aria-hidden="true"><path d="M1 4.5H8V1.5L13 6L8 10.5V7.5H1Z" fill="currentColor"/></svg><b>+1</b><img src="ui/track-soil.svg" alt="Soil"></button>`};
  $('#res').innerHTML=Object.keys(R).map(k=>`<div class="r${RX[k]?' rxr':''}" style="--c:${RCOL[k]}">${resIcon(k)}<span>${p.res[k]}</span><i>+${k=='cr'?p.tr+p.pr.cr:p.pr[k]}</i>${RX[k]||''}</div>`).join('');
@@ -1008,7 +1019,7 @@ const cNum=t=>esc(t).replace(/[+-]?\d+/g,m=>`<span class="n">${m}</span>`);
 function corpCardHTML(c,ci,still){const s=slug(c.n),st=Object.entries(c.st||{}),pr=Object.entries(c.pr||{}),
  parts=[c.cr+' Cr',...st.map(([k,v])=>v+' '+R[k]),...pr.map(([k,v])=>'+'+v+' '+R[k]+' production'),...(c.cards?[c.cards+' extra cards']:[])],
  line='(Start with '+(parts.length==1?parts[0]:parts.slice(0,-1).join(', ')+' and '+parts[parts.length-1])+'.)',
- figs=`<span class="fig credits">${cRes('cr','')}<span class="n">${c.cr}</span></span>`+st.map(([k,v])=>`<span class="fig stock">${cRes(k,'')}<span class="n">${v}</span></span>`).join('')+pr.map(([k,v])=>`<span class="fig prod">${cPbox(k)}<span class="n">+${v}</span></span>`).join('');
+ figs=`<span class="fig credits">${cRes('cr','')}<span class="n">${c.cr}</span></span>`+st.map(([k,v])=>`<span class="fig stock">${cRes(k,'')}<span class="n">${v}</span></span>`).join('')+pr.map(([k,v])=>`<span class="fig prod">${cPbox(k)}<span class="n">+${v}</span></span>`).join('')+(c.cards?`<span class="fig cards"><span class="n">+${c.cards}</span>${cCard('#8a8f86')}</span>`:'');
  return`<article class="corp-card" style="--h:${c.h};--bgx:${CORP_SLICE[ci%CORP_SLICE.length]}%${c.bg?`;--corp-bg:url(${c.bg})`:''}" ${still?`aria-label="${c.n}"`:`tabindex="0" role="button" aria-label="Choose ${c.n}" onclick="choose(${ci})" onkeydown="if(event.key=='Enter')choose(${ci})"`}>
 <div class="sheet"></div><div class="band-lit"></div><div class="rules"></div>
 <div class="tab"><svg viewBox="0 0 214 33" preserveAspectRatio="none" aria-hidden="true"><path d="M0 0 H214 L203.5 24.5 Q200.5 32 192 32 H22 Q13.5 32 10.5 24.5 Z" fill="var(--hue-light)" stroke="var(--card-outline)" stroke-width="1.6" stroke-linejoin="round"/><path d="M7 1.8 H207 L199 22 Q197 28.5 190 28.5 H24 Q17 28.5 15 22 Z" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.1"/></svg><span>CORPORATION</span></div>
