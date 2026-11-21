@@ -36,6 +36,11 @@ def clean_name(n):
     return n or "Player"
 
 
+def has_name(n):
+    """True when the player typed a real name (not empty after cleaning)."""
+    return bool(re.sub(r"[\x00-\x1f\x7f<>]", "", str(n or "")).strip())
+
+
 def tidy():
     now = time.time()
     for code in [c for c, r in rooms.items() if now - r["touched"] > ROOM_TTL]:
@@ -116,6 +121,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.reply(200, out)
         if "/api/" in u.path:
             return self.reply(404, {"error": "Unknown request."})
+        if re.fullmatch(r"/[A-Za-z0-9]{5}", u.path):   # a room link like /ABCDE shows the game page; the game reads the code
+            self.path = "/index.html"
         return super().do_GET()
 
     def do_HEAD(self):
@@ -141,6 +148,8 @@ class Handler(SimpleHTTPRequestHandler):
         with lock:
             tidy()
             if action == "room":                      # host a new lobby
+                if not has_name(data.get("name")):
+                    return self.reply(400, {"error": "Type your name first."})
                 if len(rooms) >= MAX_ROOMS:
                     return self.reply(503, {"error": "Too many lobbies open. Try again later."})
                 code = "".join(secrets.choice(CODE_CHARS) for _ in range(5))
@@ -167,6 +176,8 @@ class Handler(SimpleHTTPRequestHandler):
                         return self.reply(200, {"code": str(data["code"]).upper(), "token": p["token"],
                                                 "seat": seat, "bots": room["bots"],
                                                 "players": [q["name"] for q in room["players"]]})
+                if not has_name(data.get("name")):
+                    return self.reply(400, {"error": "Type your name first."})
                 if room["status"] != "open":
                     return self.reply(409, {"error": "That game has already started."})
                 if len(room["players"]) >= MAX_PLAYERS:

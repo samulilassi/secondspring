@@ -234,6 +234,9 @@ button.sl,button.sl:hover:not(:disabled),button.sl:active:not(:disabled),button.
 .modes section{display:grid;gap:10px;align-content:start;padding:14px;border:1px solid var(--line);border-radius:12px;background:#0c1a1666}
 .modes h2{font:600 18px var(--serif);color:var(--bone)}.modes p{font-size:12px;opacity:.75}
 .nin{flex:1;max-width:200px;font:600 14px system-ui;padding:6px 10px;background:#0f221c;color:inherit;border:1px solid #356455;border-radius:9px}.rowl{display:flex;justify-content:space-between;align-items:center;gap:10px}
+/* name lock-in on the lobby screen */
+.nlk{display:flex;gap:6px;flex:1;justify-content:flex-end;align-items:center}.nlk .nin:disabled{opacity:.7;cursor:default}
+.nhint{margin-top:-12px;font-size:12px;text-align:right;opacity:.8}.nhint.warn{color:#ffcf7a;opacity:1;font-weight:600}.nhint.ok{color:#b9de8c;opacity:1}
 .segb{display:flex;gap:4px}.segb button{padding:5px 13px;text-align:center}.segb button.on{background:var(--lime);color:#14260f;border-color:var(--lime);font-weight:700}
 .join{display:flex;gap:6px}.join input{flex:1;min-width:0;font:600 15px system-ui;letter-spacing:.2em;text-transform:uppercase;padding:6px 10px;background:#0f221c;color:inherit;border:1px solid #356455;border-radius:9px}
 .code{display:flex;gap:8px;align-items:center}.code span{font:700 24px var(--serif);letter-spacing:.2em;color:var(--lime)}
@@ -660,7 +663,7 @@ body.lobby #cnt,body.lobby #set{z-index:60}
 #idlew{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:50;max-width:calc(100% - 32px);padding:10px 18px;border-radius:10px;
  background:var(--panel);color:#ffcf8a;border:2px solid #E8871E;box-shadow:0 6px 18px #000a;font-weight:600;text-align:center}
 /* your 4 Active decks (2×2 square) and dragging cards to rearrange decks and hand */
-#tab .decks{display:grid;grid-template-columns:repeat(2,138px);gap:10px;align-items:start}
+#tab .decks{display:grid;grid-template-columns:repeat(2,var(--tw,138px));gap:10px;align-items:start}
 #tab .stk.empty{border:2px dashed #ffffff33;border-radius:10px;box-sizing:border-box}
 #tab,#hand .cs{user-select:none;-webkit-user-select:none}
 #tab .hit,#hand .cs .pcw{touch-action:none}

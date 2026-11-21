@@ -1,17 +1,28 @@
 // SECOND SPRING - local demo (no server). Open with VS Code "Live Server".
 const $=s=>document.querySelector(s),NS='http://www.w3.org/2000/svg';
 const R={cr:'Credits',sa:'Salvage',re:'Rare mineral',se:'Seeds',fc:'Fusion Cells',bc:'Biochar'};
-const LN={f:'Forest',w:'Wetland',s:'Settlement',p:'Fusion Plant',c:'Wildlife Corridor',r:'Clear a Ruin'};
+const LN={f:'Forest',w:'Wetland',s:'Settlement',p:'Fusion Plant',c:'Wildlife Corridor',r:'Clear a Ruin',x:'Ruin'};
 const PC=['#4be07a','#ef5a52','#f0c63c','#4f8cff'];
 const SYMS=['<polygon points="0,-7.3 7.3,0 0,7.3 -7.3,0" fill="#39d56b"/>','<polygon points="0,-7 7.5,6 -7.5,6" fill="#f34f52"/>','<circle r="7.2" fill="#f5d343"/>','<rect x="-6.8" y="-6.8" width="13.6" height="13.6" rx="1.4" fill="#4299ff"/>'];
 const symG=i=>`<g stroke="#101a14" stroke-width="1.5" stroke-linejoin="round">${SYMS[i]}</g>`,symHTML=(i,px)=>`<svg viewBox="-9 -9 18 18" width="${px}" height="${px}">${symG(i)}</svg>`;
+/* CORPORATIONS: one per line. n name, t tagline, h colour hue, cr starting Credits, st starting resources, pr starting production, d effect text.
+   The ability is data too:  ab: card effect codes that work like an Active card the corporation always has (K{science:2} discount, W{...} trigger, VS{c:1} game-end points;
+   K{E:2} / K{A:1} = Event / Active cards cost less, W{track.so:...} = when YOU raise Soil, W{place.r:...} = when you clear a Ruin).
+   Special rules: cards = extra starting cards, see = cards seen each generation (normally 5), pv = what 1 resource pays toward its synergy (pv:{sa:3}), fcbc = Biochar made from each Fusion Cell */
 const CORPS=[
-{n:'Greenline Reclamation',t:'Reforestation guild',h:130,cr:42,pr:{se:1},d:'Forests you place also give +1 Cr'},
-{n:'Ashfall Recycling',t:'Scrap recyclers',h:22,cr:36,st:{sa:4},d:'Clearing Ruins gives +1 extra Salvage'},
-{n:'Vireo Seed Bank',t:'Seed vault co-op',h:95,cr:40,pr:{se:2},d:'Seeds pay 2 Cr each for Soil cards'},
-{n:'Meridian Fusion',t:'Fusion grid builders',h:190,cr:38,pr:{fc:2},d:'Fusion Plant cards cost 4 less'},
-{n:'Delta Rewilding Trust',t:'Wetland trust',h:175,cr:46,d:'Wetlands you place give +1 Biochar prod'},
-{n:'Cairn Heavy Industries',t:'Heavy industry',h:35,cr:34,pr:{re:1},st:{sa:2},d:'Settlements you place give +1 Salvage prod'}];
+{n:'Nomad Caravan Union',t:'Travelling traders',h:55,cr:40,ab:['K{E:2}'],d:'Event cards cost 2 less'},
+{n:'Tinker Collective',t:'Workshop co-op',h:15,cr:42,pr:{cr:1},ab:['K{A:1}'],d:'Active cards cost 1 less'},
+{n:'Northstar Cartographers',t:'Survey mappers',h:240,cr:44,see:6,d:'Each generation you see 6 cards and keep 3'},
+{n:'Rubblewright Salvors',t:'Ruin breakers',h:345,cr:45,st:{sa:2},ab:['W{place.r:Gsa4,Gcr3}'],d:'Clearing a Ruin also gives +4 Salvage and +3 Cr'},
+{n:'Cinderbloom Kilns',t:'Fusion kiln burners',h:305,cr:34,pr:{fc:1},fcbc:2,d:'Each Fusion Cell turns into 2 Biochar'},
+{n:'Hollowfen Rangers',t:'Wildlife wardens',h:150,cr:44,ab:['K{wildlife:3}','VS{c:1}'],d:'Wildlife cards cost 3 less. Your Wildlife Corridors score +1 VP each'},
+{n:'Cairn Heavy Industries',t:'Heavy industry',h:35,cr:36,st:{sa:2},ab:['W{place.s:Psa1}'],d:'Settlements you place give +1 Salvage prod'},
+{n:'Lumen Institute',t:'Field scientists',h:270,cr:42,cards:2,ab:['K{science:2}'],d:'Science cards cost 2 less'},
+{n:'Ironvale Foundries',t:'Steel guild',h:210,cr:30,pr:{sa:1},pv:{sa:3},d:'Salvage pays 3 Cr each for Industry cards'},
+{n:'Kessel Engineworks',t:'Machine rebuilders',h:115,cr:44,st:{re:1},ab:['W{play.engine:Gre1}'],d:'When you play an Engine card, gain 1 Rare mineral'},
+{n:'Loamwright Farms',t:'Soil farmers',h:80,cr:41,pr:{bc:1},ab:['W{track.so:Gse2}'],d:'Each time you raise Soil, gain 2 Seeds'},
+{n:'Brightwater Grid',t:'Power utility',h:185,cr:40,pr:{fc:1},ab:['W{play.power:Gfc3}'],d:'When you play a Power card, gain 3 Fusion Cells'}];
+const corpFx=p=>(p.c&&p.c.ab)||[]; // the corporation's ability codes
 /* CARD SYNERGIES - shown as symbols in the card's top right corner. They are the only card categories. To add a new one: add a line here and put its icon in ui/syn/<key>.svg.
    pay:'sa' / v:2 means 1 of that resource pays 2 Credits toward cards with this synergy. */
 const SYN={
@@ -31,7 +42,7 @@ const SYN={
    requirement (optional): co>=8, co<=10 (CO2 track), so>=4, so<=7 (Soil %), we>=2 (Wetlands), syn.science>=3 (Science cards you have played), own.p (you own a Fusion Plant)
    effects, separated by spaces:
      Pse2 production (+2 Seeds every generation)   Gcr3 gain now (Gcr1/t = 1 Credit per tile you own)   Tco Tso Twe track step
-     Lf Lw Ls Lp Lc place a Forest / Wetland / Settlement / Fusion Plant / Wildlife Corridor   Lr clear a ruin   D2 draw cards   V2 victory points (V-1 = minus one)
+     Lf Lw Ls Lp Lc place a Forest / Wetland / Settlement / Fusion Plant / Wildlife Corridor   Lr clear a ruin   Lx place a Ruin on an empty hex (no owner)   D2 draw cards   V2 victory points (V-1 = minus one)
      Qcr5 steal up to 5 from a rival   Xse4 a rival loses up to 4   Zfc1 a rival loses 1 production
      A{sa2:Gcr5} action once per generation (pay left, get right; tok1 = add a token to this card)
      W{play.industry:Gcr2} trigger. play.<synergy> or play.E (you play one), place.f (you place one), any.p (anyone places one), anytrack.co / anytrack.so (anyone lowers CO2 / raises Soil)
@@ -41,7 +52,7 @@ const CARDS=`Ruin Clearance Crew|6|E|recycling||Lr Gsa3|Somebody has to move the
 Seed Vault Opening|10|E|soil||Gse5 Tso|Frozen for decades, hungry for sunlight.
 Tidal Fusion Reactor|14|B|power fusioncell||Pfc3|The moon does the heavy lifting.
 Mycorrhizal Network|12|B|soil||Pse2|The forest has had wi-fi all along.
-Carbon Capture Towers|16|A|engine air||A{fc4:Tco}|Skyscrapers that inhale for a living.
+Carbon Capture Towers|20|A|engine air||A{fc6:Tco}|Skyscrapers that inhale for a living.
 Scrapyard Foundry|9|B|industry recycling||Psa2|One era's junk is the next one's steel.
 Rare Earth Reclaimers|14|B|engine recycling||Pre2|Old gadgets, new metals, no mining.
 Floodplain Restoration|15|B|wildlife soil||Lw Pbc1|Let the river remember where it lived.
@@ -54,28 +65,28 @@ Salvage Auctions|5|E|recycling||Gcr6 Gsa2|Going once, going twice, sold for scra
 Aquifer Recharge|17|B|science||Lw Pcr1|Patience, drop by drop.
 Solar Farm Grid|11|B|power||Pfc2|Free power, if you can stand the glare.
 Enclave Exchange|7|A|industry||A{sa1:Gcr3}|One survivor's junk is another's currency.
-Soil Microbiome Lab|14|A|science soil||A{bc5:Tso}|A billion tiny employees, zero salaries.
-Rewilding Drone Fleet|12|A|engine wildlife||A{cr1:Gse2}|Seeds from above, no questions asked.
+Soil Microbiome Lab|16|A|science soil||A{bc6:Tso}|A billion tiny employees, zero salaries.
+Rewilding Drone Fleet|12|A|engine wildlife||A{cr3:Gse2}|Seeds from above, no questions asked.
 Old World Archive Dig|6|E|recycling science||D2 Gre1|Turns out they did keep receipts.
 Wildlife Corridor Pact|9|B|wildlife||Lc Gcr2|Fences down, paws welcome.
 Fusion Plant Prototype|13|B|power engine||Lp Pre1|It works. Mostly.
-Peatland Revival|20|B|soil air wildlife||Lw Tco V2|The bog is back, and it brought friends.
+Peatland Revival|20|B|soil air wildlife||Lw Pbc1 V2|The bog is back, and it brought friends.
 Sealed Enclave Charter|16|B|settlement||Ls Pcr2|Closed doors, open ledgers.
 Orchard Terraces|10|B|soil||Pse1 Pcr1 V1|Apples grow where the asphalt cracked.
 Terraformer Veterans|7|B|||Pcr1 V1|They have seen worse than this swamp.
 Scrap Metal Rush|3|E|recycling||Gsa5|Finders keepers, weighers payers.
 Mangrove Barrier|15|B|air||Lw Gse3|Roots against the rising tide.
-High Density Housing|19|B|settlement industry||Ls Psa1 V2|Cozy is a matter of perspective.
-Atmospheric Filtration Grid|22|B|engine air||Tco Pcr2|Breathe in. Thank the machine.
+High Density Housing|19|B|settlement industry||Ls Pcr1 V2|Cozy is a matter of perspective.
+Atmospheric Filtration Grid|22|B|engine air||Pcr2 V2|Breathe in. Thank the machine.
 Glacier Regrowth Project|28|E|science soil||Tso Tso Lw|Slow ice, slower paperwork.
 Fusion Cell Surplus|4|E|fusioncell||Gfc6|Overstocked and slightly warm.
-Compost Network|6|A|soil||A{se2:Gbc3}|Nothing is waste if you wait long enough.
+Compost Network|8|A|soil||A{se2:Gbc3}|Nothing is waste if you wait long enough.
 Heavy Machinery Depot|12|B|industry engine recycling||Psa1 Pre1|Beeps loudly, moves mountains.
 Earth Day Festival|9|E|||Gcr1/t|Every tile a reason to celebrate.
 Hydroponic Skyfarm|14|B|engine||Pse3|Lettuce, but make it vertical.
 Genetic Archive Reboot|26|B|science soil||Pse2 Tso V3|Restore from backup. Fingers crossed.
 Ghost City Rebuild|17|B|recycling settlement||Lr Ls Pcr1|Cozy is a matter of time.
-Weather Control Network|32|E|science engine air||Tco Tco Lw|Rain on request, sun on Sundays.
+Weather Control Network|28|E|science engine air||Lw Gse5 Gbc4|Rain on request, sun on Sundays.
 The Great Greening|35|B|soil air||Tco Tso Lw V6|And then, one morning, everything was green.
 Salvage Yard Cranes|8|B|industry||Psa1 Gsa2|Old cranes, new purpose.
 Steel Reclamation Mill|15|B|industry||Psa2 V1|Melted down and built back up.
@@ -86,28 +97,28 @@ Rivet Foundry|10|B|industry||Psa2|Hot iron, steady hands.
 Industrial Commons|26|B|industry|syn.industry>=4|Psa2 Pcr2 V2|A factory owned by everyone.
 Machine Shop Annex|5|B|industry||Psa1|One lathe, big ambitions.
 Freight Depot Revival|11|B|industry||Pcr2|The trains still know the way.
-Tool and Die Works|9|B|industry||Psa1 D1|Precision, salvaged.
+Tool and Die Works|9|B|industry||Pcr1 D1|Precision, salvaged.
 Forge Quarter|20|B|industry||Psa3 V1|A whole district that smells of hot metal.
 Rail Yard Salvage|14|B|industry recycling||Psa1 Gsa4 Pcr1|Ten thousand tonnes of rusty opportunity.
 Cement Kiln Restart|12|B|industry|co>=8|Psa2 Gcr2|Dirty, cheap and only possible early on.
-Coal Bunker Conversion|4|B|industry||Psa1 Pfc1 V-1|Not proud of it, but it runs.
+Coal Bunker Conversion|5|B|industry||Pfc2 V-1|Not proud of it, but it runs.
 Smokestack Refit|16|B|industry air||Psa1 Tco|Same chimney, cleaner breath.
-Glassworks Kilns|13|B|industry||Psa1 Pcr1 Gsa2|Sand in, windows out.
+Glassworks Kilns|13|B|industry||Pbc1 Pcr1 Gsa2|Sand in, windows out.
 Union Hall|10|B|industry|syn.industry>=3|Pcr2 V1|Solidarity, with coffee.
 Mega-Press Plant|33|B|industry engine||Psa3 Pre1 V1|It presses whole cars flat. Politely.
-Charcoal Retort Yard|14|B|industry soil||Pbc2 Psa1|Wood in, carbon underground.
-Scrap-Fed Reactor|12|B|industry fusioncell||Pfc2 Psa1 Pcr-1|Feeds on yesterday.
+Charcoal Retort Yard|16|B|industry soil||Pbc3|Wood in, carbon underground.
+Scrap-Fed Reactor|12|B|industry fusioncell||Pfc3 Pcr-1|Feeds on yesterday.
 Concrete Crushers|9|B|industry recycling||Psa1 Gsa3|Rubble in, gravel out.
-Geothermal Wellhead|16|B|power industry||Lp Psa1|The planet's own boiler room.
+Geothermal Wellhead|16|B|power industry||Lp Pfc1|The planet's own boiler room.
 Microgrid Substation|12|B|power industry|own.p|Pcr2 Pfc1|Small grid, big reliability.
-Grid Restoration Crews|11|B|power industry|own.p|Pcr1 Psa1 Gsa2|Climbing poles since the collapse.
-Turbine Repair Line|17|B|industry engine||Pre1 Psa1 Pcr1|Every blade balanced by hand.
+Grid Restoration Crews|11|B|power industry|own.p|Pcr1 Pfc1 Gsa2|Climbing poles since the collapse.
+Turbine Repair Line|19|B|industry engine||Pre2 Pcr1|Every blade balanced by hand.
 Magnet Recovery Works|14|B|industry engine||Pre2|Pulling metals out of motors.
 Precision Lathes|22|B|industry engine|syn.engine>=2|Pre2 V1|Tolerances finer than a hair.
 Excavator Fleet|18|B|industry engine||Psa2 Pre1|Big yellow optimism.
 Gearbox Rebuilders|12|B|industry engine||Pre1 Gsa3|Teeth, oil and patience.
-Automated Sorting Line|24|B|industry engine recycling||Psa2 Pre1 D1|The robots know what goes where.
-Exoskeleton Workshop|14|B|industry engine||Pre1 Psa1 Gcr2|Lift a beam, save a back.
+Automated Sorting Line|26|B|industry engine recycling||Pre2 D1|The robots know what goes where.
+Exoskeleton Workshop|16|B|industry engine||Pre2 Gcr2|Lift a beam, save a back.
 Landfill Mining Rig|15|B|industry engine recycling||Psa1 Pre1 Gsa2|The richest mine is the old dump.
 Electric Tractor Pool|15|B|engine soil||Pse2 Pcr1|Quiet fields, loud harvests.
 Rewound Motors|10|B|engine||Pre1 Pcr1|New copper, old hum.
@@ -119,7 +130,7 @@ Cable Car Lines|12|B|engine||Pcr2|“Roads? Where we’re going, we don’t need
 Orbital Mirror Fragments|45|B|engine air|co<=8|Tco Tco Pre1 V2|A broken satellite, turned into a sunshade.
 Remote Sensing Station|11|B|engine science||D2 Pre1|Seeing the whole valley at once.
 Seismic Monitoring Grid|13|B|engine science||Pre1 D1|Listening to the ground breathe.
-Copper Wire Harvest|12|B|engine recycling||Gre3 Psa1|Kilometres of it, in every wall.
+Copper Wire Harvest|14|B|engine recycling||Gre3 Pre1|Kilometres of it, in every wall.
 Seed Genome Library|16|B|science soil||Pse2 D1|Every seed indexed, every seed loved.
 University Ruins Reopened|19|B|science recycling||Lr D2 Pcr1|Lectures resume in Hall B. Mind the hole.
 Climate Observatory|14|B|science air||D1 Pcr1 V1|Measuring the sky's recovery.
@@ -137,7 +148,7 @@ Riverside Hydro Dam|19|B|power||Lp Pfc1 Pcr1|The river pays rent now.
 Solar Canopy Field|14|B|power||Lp Gfc4|Shade for sheep, power for people.
 Reactor Cooling Ponds|18|B|power fusioncell|own.p|Pfc3 Gbc2|Warm water, happy frogs.
 Tidal Lagoon Array|24|B|power|we>=3|Lp Pfc2 V1|Twice a day, like clockwork.
-Mall Demolition Contract|11|B|recycling industry||Lr Psa1|Last sale: everything must go.
+Mall Demolition Contract|11|B|recycling industry||Lr Pcr1|Last sale: everything must go.
 Ruin Gardeners|13|B|recycling soil||Lr Pse1 Gse2|Flowers first, bricks later.
 Glass Bottle Exchange|6|B|recycling||Pcr1 Gsa1|Ten bottles, one coin.
 Terraced Hillsides|15|B|soil|so>=3|Pse2 V1|Steps of green up every slope.
@@ -150,17 +161,17 @@ Reed Bed Filters|13|B|air||Lw Gcr2|Plants that clean the water and the air.
 Badger Crossing|11|B|wildlife||Lc Gse2|Tunnels under the road, finally.
 Elk Migration Route|17|B|wildlife air|co<=9|Lc V1|The herds remember the old paths.
 Riverside Hamlet|14|B|settlement||Ls Pse1|Twelve houses and a ferry.
-Rail Town Revival|20|B|settlement industry||Ls Psa1 Pcr1|The station clock works again.
+Rail Town Revival|20|B|settlement industry||Ls Pcr2|The station clock works again.
 Solar Village|18|B|settlement power|own.p|Ls Pcr2|Every roof a power plant.
 Scavenger Outpost|9|B|settlement recycling||Ls Gsa3|Built from what was lying around.
 Science Commune|19|B|settlement science||Ls D2 V1|Peer review at the dinner table.
-Eco-Arcology|42|B|settlement engine air|co<=7|Ls Tco Pcr3 V2|A city that breathes with the forest.
+Eco-Arcology|40|B|settlement engine air|co<=7|Ls Pcr3 V3|A city that breathes with the forest.
 Floating Harbor Town|22|B|settlement|we>=4|Ls Pcr2 V1|Houses that rise with the water.
 Great Smelting Complex|55|B|industry engine|syn.industry>=4|Psa4 Pre2 V3|The biggest furnace in the valley, relit.
 Valley Reforestation Act|50|B|soil air|co<=10|Lf Lf Tso V2|Two forests, one law, a whole valley of shade.
 Continental Seed Network|67|B|soil science|syn.science>=3|Pse4 Tso Tso V4|Every valley sends its seeds to every other.
 Scrap Harbour Shipyard|23|B|industry recycling||Psa2 Gsa4 Pcr1|Hulls cut up, hulls welded back.
-Sawmill Cooperative|9|B|industry soil||Psa1 Pse1|Only fallen trees, by rule.
+Sawmill Cooperative|9|B|industry soil||Pse1 Pbc1|Only fallen trees, by rule.
 Bicycle Factory|12|B|industry air||Pcr2 V1|The quietest traffic jam in history.
 Blast Furnace Restart|8|B|industry|co>=10|Psa2 V-1|Loud, filthy and very productive.
 River Barge Fleet|16|B|industry engine|we>=2|Pcr2 Pre1|The rivers are roads again.
@@ -169,11 +180,11 @@ Reforestation Bonds|18|B|||Lf Pcr2|Invest in shade.
 Memorial Garden|5|B|||V1 Gcr1|For the ones who planted before us.
 Community Granary|7|B|||Pse1 Gcr2|Nobody goes hungry this winter.
 Salvage Brokerage|10|A|industry||A{sa2:Gcr5}|Scrap bought low, sold high.
-Night Shift Foundry|14|A|industry||A{cr4:Gsa3}|The furnace never sleeps.
+Night Shift Foundry|16|A|industry||A{cr4:Gsa3}|The furnace never sleeps.
 Scrap Recycling Contracts|8|A|industry recycling||W{play.recycling:Gsa2}|Paid by the tonne.
 Industrial Purchasing Office|8|A|industry||K{industry:2}|Bulk orders, bulk discounts.
 Foreman's Guild|12|A|industry|syn.industry>=3|W{play.industry:Gcr2}|Every new line needs a foreman.
-Robotic Welders|16|A|industry engine||A{re1:Gsa3}|Sparks without sweat.
+Robotic Welders|18|A|industry engine||A{re1:Gsa3}|Sparks without sweat.
 Smelter Co-op|11|A|industry||A{sa3:Gre2,Gcr1}|Turning scrap into something rare.
 Heavy Industry Lobby|10|A|industry|co>=7|K{industry:3} V-1|Friends in high places, smoke in the air.
 Carbon Offset Exchange|7|A|industry air||W{anytrack.co:Gcr1}|Every breath of clean air pays a dividend.
@@ -183,30 +194,30 @@ Rail Museum|10|A|industry recycling||A{sa2:tok1} VT2|Every engine restored is a 
 Plant Maintenance Guild|10|A|power industry||W{any.p:Gsa2}|Every new plant needs a mechanic.
 Trading Post Settlement|17|A|settlement industry||Ls A{sa1:Gcr3}|“Greed, for lack of a better word, is good.”
 Autonomous Haulers|16|A|engine industry||A{re1:Gsa2,Gcr1}|They drive themselves to the scrapyard.
-Recycled Rail Network|20|A|industry engine|syn.industry>=2|A{:Gsa2} Pcr1|Old tracks, new freight.
+Recycled Rail Network|26|A|industry engine|syn.industry>=2|A{:Gsa2} Pcr1|Old tracks, new freight.
 Tool Lending Depot|9|A|industry||A{cr1:Gsa1} Gsa2|Return it by Friday, please.
-Heavy Haul Contractors|13|A|industry||A{sa3:Gcr8}|If it fits on a truck, it moves.
-Furnace Heat Exchange|12|A|industry fusioncell||A{sa2:Gfc5}|Waste heat, captured.
+Heavy Haul Contractors|16|A|industry||A{sa3:Gcr8}|If it fits on a truck, it moves.
+Furnace Heat Exchange|14|A|industry fusioncell||A{sa2:Gfc3}|Waste heat, captured.
 Scrap Metal Sculptors|12|A|industry recycling||A{sa4:tok1} VT1|Art made from the old world's bones.
 Industrial Revival Fund|18|A|industry|syn.industry>=5|W{play.industry:D1}|“Was all this legal? Absolutely not.”
 Drone Maintenance Bay|9|A|engine||K{engine:2}|Spare rotors on every shelf.
 Rare Metal Exchange|9|A|engine||A{re1:Gcr4}|“Nobody knows if a stock is going to go up, down, sideways or in circles.”
 Maglev Freight Line|16|A|engine|syn.engine>=2|W{play.engine:Gcr3}|Floating freight, silent and fast.
-Mechanic Network|11|A|engine||A{sa3:Gre3}|Ask around. Someone has the part.
+Mechanic Network|14|A|engine||A{sa3:Gre3}|Ask around. Someone has the part.
 Satellite Uplink|14|A|engine science||W{play.science:Gre1}|The old satellites still answer.
 Electric Bus Depot|9|A|engine air||W{any.s:Gcr3}|Every new town gets a bus stop.
 Laboratory Robotics|14|A|science engine||K{science:2} K{engine:1}|Pipettes that never get tired.
 Carbon Vault|16|A|air engine||A{bc2:tok1} VT1|Carbon locked away for a thousand years.
 Isotope Separators|15|A|fusioncell engine||A{fc3:Gre2}|Sorting atoms by weight.
-Load Balancing Center|15|A|power engine|own.p|A{:Gfc2}|Not a single watt wasted.
+Load Balancing Center|20|A|power engine|own.p|A{:Gfc2}|Not a single watt wasted.
 Engine Rebuild Bay|20|A|engine|syn.engine>=3|A{re3:tok1} VT1 Pre1|Every rebuilt engine is a trophy.
-Field Laboratory|16|A|science||A{:D1}|A tent, a microscope and endless questions.
+Field Laboratory|22|A|science||A{:D1}|A tent, a microscope and endless questions.
 Peer Review Board|12|A|science|syn.science>=2|K{science:2}|“I’m gonna make him an offer he can’t refuse.”
 Seed Testing Plots|11|A|science soil||W{play.soil:Gse2}|Rows and rows of careful experiments.
-Weather Station Network|10|A|science air||A{cr4:D2}|Tomorrow: clearing skies.
+Weather Station Network|14|A|science air||A{cr4:D2}|Tomorrow: clearing skies.
 Research Grants Office|18|A|science|syn.science>=3|W{play.science:Gcr3}|Funding follows curiosity.
 Archive Restoration|12|A|science recycling||W{play.recycling:D1}|Every ruin hides a notebook.
-Think Tank|25|A|science|syn.science>=4|A{:D1} VS{syn.science:3}|Ideas, on tap.
+Think Tank|28|A|science|syn.science>=4|A{:D1} VS{syn.science:3}|Ideas, on tap.
 Memory Archive|10|A|science||W{play.science:tok1} VT2|Remember everything, repeat nothing.
 Citizen Science Network|8|A|science||W{play.science:Gcr1} D1|Thousands of volunteers with notebooks.
 Long-Term Ecology Plots|14|A|science soil|syn.science>=2|A{:tok1} VT2|The best data takes decades.
@@ -214,11 +225,11 @@ Fusion Cell Exchange|8|A|fusioncell||A{fc2:Gcr3}|Charged cells, cash on delivery
 Cold Fusion Kiln|12|A|fusioncell soil||A{fc2:Gbc4}|A kiln that runs on borrowed sunlight.
 Plasma Torch Recycler|13|A|fusioncell recycling||A{fc2:Gsa3}|Cuts through anything the old world built.
 Fusion Grid Operator|20|A|fusioncell power|own.p|A{fc3:Gcr6}|Selling power to the whole valley.
-Fusion Battery Farm|9|A|fusioncell||A{fc4:D2}|Rows of humming batteries.
+Fusion Battery Farm|12|A|fusioncell||A{fc4:D2}|Rows of humming batteries.
 Power Broker|8|A|power||K{power:3}|Knows every plant manager by name.
 Worm Farm Cooperative|8|A|soil|so<=7|A{se1:Gbc2}|Feed the worms, feed the soil.
 Soil Restoration Fund|10|A|soil|so>=4|W{anytrack.so:Gcr2}|Every inch of topsoil pays back.
-Rotational Grazing|14|A|soil|so>=5|A{se5:Tso}|Move the herd, heal the ground.
+Rotational Grazing|16|A|soil|so>=5|A{se6:Tso}|Move the herd, heal the ground.
 Seedling Nursery|14|A|soil||A{:tok1} VT2|A thousand saplings waiting for a home.
 Bee Hive Collective|9|A|soil||W{any.f:tok1} VT3|Every new forest means more honey.
 Wolf Return Charter|16|A|wildlife||Lc W{place.f:Gcr1}|The wolves came back, and the forests followed.
@@ -251,12 +262,27 @@ Overtime Push|5|E|industry||Gsa2 D1|Just one more shift.
 Rare Earth Strike|8|E|engine||Gre4|A seam of neodymium in the old quarry.
 Prototype Unveiling|12|E|engine science||Gre2 D2|It sparked, but in a good way.
 Breakthrough Paper|10|E|science|syn.science>=2|D3 V1|Published, peer-reviewed, celebrated.
-Carbon Tax Rebate|14|E|air industry|co<=10|Tco Gsa2 Gcr2|Clean air finally pays.
-Clean Air Day|18|E|air|co<=6|Tco Tco|You can see the mountains again.
+Carbon Tax Rebate|10|E|air industry|co<=10|Gcr5 V1|Clean air finally pays.
+Clean Air Day|14|E|air|co<=6|Gse8|You can see the mountains again.
 Topsoil Delivery|16|E|soil|so<=5|Tso Gse2|Fresh earth by the truckload.
 Fusion Breakthrough|10|E|fusioncell science||Gfc8 D1|Stable at last.
 Grid Blackout|6|E|power|own.p|Zfc1 Gfc4|Your lights stay on. Theirs don't.
-Salvage Rights Auction|5|E|recycling||Qsa3 Gcr2|The highest bidder takes the scrapyard.`.split('\n').map(l=>{const[n,c,y,s,q,f,fl]=l.split('|');return{n,c:+c,y,s:s.split(' ').filter(Boolean),q,f:f.split(' ').filter(Boolean),fl}});
+Salvage Rights Auction|5|E|recycling||Qsa3 Gcr2|The highest bidder takes the scrapyard.
+Leftover Warhead|8|E|||Lx Gsa3|Some things the old world left behind should have stayed buried.
+Scrap Compost Digesters|9|A|recycling soil||A{sa3:Gbc3}|Rust, worms and a lot of patience.
+Scrap-for-Seeds Market|8|A|industry||A{sa3:Gse3}|Two bolts for a bag of beans.
+Rubble Haulers|12|A|industry recycling||A{sa4:Lr}|First the rubble, then the garden.
+Lynx Reintroduction|13|B|wildlife air||Lc V1|Quiet paws in the new pines.
+Beaver Dam Return|14|B|wildlife soil||Pse1 Pbc1|The best engineers never went to school.
+Wildlife Census|5|E|wildlife science||D2 Gse1|Count the tracks, then count again.
+Hydro Turbine Refit|12|B|power||Pfc1 Pcr1|Old turbine, new bearings.
+Grid Tie-In Contract|6|E|power||Gfc3 Gcr2|Plug in, pay up.
+Pylon Restringers|10|B|power||Pfc1 D1|Up the pole, along the wire.
+Fusion Kiln Annex|13|B|fusioncell soil||Pfc1 Pbc1|The kiln never cools.
+Ash Fertiliser Trade|9|A|soil||A{bc3:Gse3}|Grey ash, green shoots.
+Terra Preta Beds|16|B|soil|so>=3|Tso Pbc1|Black earth, made by hand.
+Leaf Litter Collective|11|B|soil recycling||Pbc1 Gbc3|Every autumn is a harvest.
+Collapse Survey|5|E|recycling||Lr D1|Mark it, clear it, map it.`.split('\n').map(l=>{const[n,c,y,s,q,f,fl]=l.split('|');return{n,c:+c,y,s:s.split(' ').filter(Boolean),q,f:f.split(' ').filter(Boolean),fl}});
 const D=[[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
 const shuf=a=>a.map(x=>[Math.random(),x]).sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -312,9 +338,9 @@ const valid=t=>{let v=G.cells.filter(c=>t=='r'?c.t=='R':!c.t);if(t=='s')v=v.filt
  if(t=='c'){const w=v.filter(c=>nb(c).some(n=>n.t=='f'));if(w.length)return w}return v};
 const myTurn=()=>G&&G.phase==='play'&&G.cur===ME&&G.ps[ME]&&!G.ps[ME].bot;
 const busy=()=>!G||G.pend.length>0||!myTurn()||G.over||!!(G.ps[ME].draft&&G.ps[ME].draft.length);
-/* discounts from your Active cards: K{industry:2} = Industry cards cost 2 less, K{all:1} = every card */
-function disc(p,cd){let d=0;for(const id of p.tab||[])for(const t of CARDS[id].f){const m=t.match(/^K\{(\w+):(\d+)\}$/);if(m&&(m[1]=='all'||cd.s.includes(m[1])))d+=+m[2]}return d}
-const cost=(p,cd)=>Math.max(0,cd.c-(p.c.n[0]=='M'&&cd.f.includes('Lp')?4:0)-disc(p,cd));
+/* discounts from your Active cards and your corporation: K{industry:2} = Industry cards cost 2 less, K{all:1} = every card, K{E:2} = Event cards (E/B/A = card type) */
+function disc(p,cd){let d=0;for(const t of[...(p.tab||[]).flatMap(id=>CARDS[id].f),...corpFx(p)]){const m=t.match(/^K\{(\w+):(\d+)\}$/);if(m&&(m[1]=='all'||m[1]==cd.y||cd.s.includes(m[1])))d+=+m[2]}return d}
+const cost=(p,cd)=>Math.max(0,cd.c-disc(p,cd));
 const ownT=(p,t)=>G.cells.filter(c=>c.t==t&&c.o===p.i).length;
 /* requirements: track levels (co>=8, so<=7, we>=2), synergy cards already played (syn.science>=3) or owning a Fusion Plant (own.p) */
 function reqOk(p,cd){const r=cd.q;if(!r)return true;if(r=='own.p')return ownT(p,'p')>0;const m=r.match(/^(co|so|we|syn\.(\w+))(>=|<=)(\d+)$/);if(!m)return true;
@@ -326,7 +352,7 @@ const score=p=>p.tr-TR0+p.vp+cardVP(p)+G.cells.reduce((s,c)=>c.o===p.i?s+(c.t=='
 const over=()=>G.t.co==0&&G.t.so>=14&&G.t.we>=9;
 const log=s=>{G.log.unshift(s);G.log.length=Math.min(G.log.length,3)};
 /* game-end points printed on cards: VS{syn.science:2} = 1 per 2 Science cards played, VS{f:3} = 1 per 3 Forests owned, VT2 = 1 per 2 tokens on the card */
-function cardVP(p){let v=0;for(const id of p.tab)for(const t of CARDS[id].f){let m;
+function cardVP(p){let v=0;for(const[id,f]of[...p.tab.map(id=>[id,CARDS[id].f]),['corp',corpFx(p)]])for(const t of f){let m;
  if(m=t.match(/^VS\{(.+):(\d+)\}$/)){const k=m[1],n=k.startsWith('syn.')?(p.sp[k.slice(4)]||0):ownT(p,k);v+=Math.floor(n/+m[2])}
  else if(m=t.match(/^VT(\d+)$/))v+=Math.floor(((p.tok||{})[id]||0)/+m[1])}return v}
 /* the deck: when it runs out, the discard pile (cards not kept from the 5 seen each generation) is shuffled back in */
@@ -335,16 +361,16 @@ const draw=(p,n)=>{const h=p.hand.length;while(n-->0){const c=deal();if(c==null)
 /* card actions: A{fc4:Tco} = pay 4 Fusion Cells, lower CO2 by 1. Once per generation */
 const aparse=id=>{const t=CARDS[id].f.find(t=>t.startsWith('A{'));if(!t)return null;const[c,g]=t.slice(2,-1).split(':');return{c:c?c.split(','):[],g:g.split(',')}};
 const canAct=(p,id)=>{const a=aparse(id);return!!a&&a.c.every(x=>p.res[x.slice(0,2)]>=+x.slice(2))};
-/* other resources that can pay for a card: Salvage 2 for Industry, Rare mineral 3 for Engine, (Vireo) Seeds 2 for Soil */
-const payWays=(p,cd)=>{const w=[];for(const k of cd.s){const y=SYN[k];if(y&&y.pay&&!w.some(x=>x.r==y.pay))w.push({r:y.pay,v:y.v})}if(p.c.n[0]=='V'&&cd.s.includes('soil'))w.push({r:'se',v:2});return w};
+/* other resources that can pay for a card: Salvage 2 for Industry, Rare mineral 3 for Engine (a corporation's pv can raise that, e.g. Ironvale: Salvage 3) */
+const payWays=(p,cd)=>{const w=[];for(const k of cd.s){const y=SYN[k];if(y&&y.pay&&!w.some(x=>x.r==y.pay))w.push({r:y.pay,v:(p.c.pv&&p.c.pv[y.pay])||y.v})}return w};
 /* how a card is paid: u = resources used, cr = Credits still needed. With no plan it uses as much of the other resources as helps (the old automatic way) */
 function payPlan(p,cd,plan){let n=cost(p,cd);const u={};for(const{r,v}of payWays(p,cd)){const k=n<=0?0:Math.max(0,Math.min(p.res[r],plan?(plan[r]||0):Math.ceil(n/v)));u[r]=k;n-=k*v}return{u,cr:Math.max(0,n)}}
 function pay(p,cd,go,plan){const{u,cr}=payPlan(p,cd,plan);if(p.res.cr<cr)return false;if(go){for(const r in u)p.res[r]-=u[r];p.res.cr-=cr}return true}
 function track(p,t){let m=false;if(t=='co'){if(G.t.co>0){G.t.co--;p.tr++;m=true}}else if(G.t[t]<(t=='so'?14:9)){G.t[t]++;p.tr++;m=true}if(m)fire({k:'track',t},p)}
-/* triggers on Active cards: W{play.industry:Gcr2} etc. src = the card that caused it (a card never triggers itself) */
-function fire(ev,a,src){for(const q of G.ps){if(!q)continue;for(const id of q.tab){if(id===src)continue;for(const t of CARDS[id].f){if(!t.startsWith('W{'))continue;
+/* triggers on Active cards and corporations: W{play.industry:Gcr2} etc. src = the card that caused it (a card never triggers itself). track.so = you raise Soil */
+function fire(ev,a,src){for(const q of G.ps){if(!q)continue;for(const[id,f]of[...q.tab.map(id=>[id,CARDS[id].f]),['corp',corpFx(q)]]){if(id===src)continue;for(const t of f){if(!t.startsWith('W{'))continue;
  const[w,g]=t.slice(2,-1).split(':'),[k,x]=w.split('.');
- const hit=k=='play'?q===a&&ev.k=='play'&&(x=='E'?ev.cd.y=='E':ev.cd.s.includes(x)):k=='place'?q===a&&ev.k=='place'&&ev.t==x:k=='any'?ev.k=='place'&&ev.t==x:k=='anytrack'?ev.k=='track'&&ev.t==x:false;
+ const hit=k=='play'?q===a&&ev.k=='play'&&(x=='E'?ev.cd.y=='E':ev.cd.s.includes(x)):k=='place'?q===a&&ev.k=='place'&&ev.t==x:k=='any'?ev.k=='place'&&ev.t==x:k=='anytrack'?ev.k=='track'&&ev.t==x:k=='track'?q===a&&ev.k=='track'&&ev.t==x:false;
  if(hit)run(q,g.split(','),id)}}}}
 /* cards that hit a rival: Q steals, X takes resources away, Z takes production away. You choose the rival; bots pick the one with the most */
 function rival(p,a,r,n){const rs=G.ps.filter(x=>x&&x!==p);if(!rs.length)return;
@@ -359,16 +385,16 @@ function run(p,f,id){for(const k of f){const a=k[0],b=k.slice(1);
  else if(a=='G'){const m=b.match(/^(\w\w)(-?\d+)(\/t)?$/);p.res[m[1]]+=+m[2]*(m[3]?G.cells.filter(c=>c.t&&c.t!='R'&&c.o===p.i).length:1)}
  else if(a=='T')track(p,b);else if(a=='L')q(p,b);else if(a=='D')draw(p,+b);else if(a=='V'&&/^-?\d+$/.test(b))p.vp+=+b;
  else if(a=='Q'||a=='X'||a=='Z')rival(p,a,b.slice(0,2),+b.slice(2))}}
-function place(p,c,t){const k=p.c.n[0];
- if(t=='r'){c.t=null;p.res.sa+=3+(k=='A'?1:0)}
+function place(p,c,t){
+ if(t=='x'){c.t='R';c.o=null} // a bomb: the hex becomes a Ruin that nobody owns
+ else if(t=='r'){c.t=null;p.res.sa+=3;fire({k:'place',t},p)}
  else{c.t=t;c.o=p.i;
-  if(t=='f'){track(p,'co');if(k=='G')p.res.cr++;p.res.se+=2*nb(c).filter(n=>n.t=='w').length}
-  if(t=='w'){track(p,'we');if(k=='D')p.pr.bc++}
-  if(t=='s'&&k=='C')p.pr.sa++;
+  if(t=='f'){track(p,'co');p.res.se+=2*nb(c).filter(n=>n.t=='w').length}
+  if(t=='w')track(p,'we');
   if(t=='p'){p.pr.fc++;if(nb(c).some(n=>n.t=='s'))p.pr.cr++}
   fire({k:'place',t},p)}
- fx(c,t);sfx(t);log(`${lname(p)}: ${LN[t]}`);render()}
-function play(p,hi,plan){const id=p.hand[hi],cd=CARDS[id];pay(p,cd,1,plan);p.hand.splice(hi,1);if(cd.y!='E')p.tab.push(id);
+ fx(c,t);sfx(t=='x'?'r':t);log(`${lname(p)}: ${LN[t]}`);render()}
+function play(p,hi,plan){const id=p.hand[hi],cd=CARDS[id];pay(p,cd,1,plan);p.hand.splice(hi,1);if(cd.y!='E')p.tab.push(id);else(p.ev||(p.ev=[])).push(id); // p.ev = your played Events, only for showing them
  for(const k of cd.s)p.sp[k]=(p.sp[k]||0)+1; // synergy cards played, for requirements and scoring
  G.pl=[...(G.pl||[]).slice(-7),{s:G.pseq=(G.pseq||0)+1,p:p.i,id}]; // recent plays (shared online), so other players can be shown the card
  log(`${lname(p)} played ${cd.n}`);sfx('card');run(p,cd.f.filter(t=>!/^([AWK]\{|VS|VT)/.test(t)),id);fire({k:'play',cd},p,id)}
@@ -384,7 +410,7 @@ function val(cd){const L=Math.min(7,Math.max(1,13-G.gen));let v=0;
   if(k.startsWith('A{'))v+=L*.9;else if(k.startsWith('W{'))v+=L*.7;else if(k.startsWith('K{'))v+=parseInt(k.split(':')[1])*(k.includes('all')?1.4:.6)*L*.4;
   else if(k.startsWith('VS'))v+=6;else if(k.startsWith('VT'))v+=3;
   else if(a=='P')v+=W[b.slice(0,2)]*n*L*.55;else if(a=='G')v+=W[b.slice(0,2)]*n*(b.endsWith('/t')?5:1)*.8;
-  else if(a=='T')v+=(b=='co'?G.t.co>0:b=='so'?G.t.so<14:G.t.we<9)?5:0;else if(a=='L')v+={f:5,w:5,s:4,p:3,c:2.5,r:2}[b];else if(a=='D')v+=+b*1.5;else if(a=='V')v+=+b*3;
+  else if(a=='T')v+=(b=='co'?G.t.co>0:b=='so'?G.t.so<14:G.t.we<9)?5:0;else if(a=='L')v+={f:5,w:5,s:4,p:3,c:2.5,r:2,x:1}[b];else if(a=='D')v+=+b*1.5;else if(a=='V')v+=+b*3;
   else if(a=='Q'||a=='X'||a=='Z')v+=W[b.slice(0,2)]*n*(a=='Z'?2:.7)+1;else v+=1}
  return v}
 /* a bot keeps the best cards it sees: 5 of 10 at the start, 3 of 5 each generation (p.keep says how many) */
@@ -396,7 +422,7 @@ function keepDraft(p,keep){if(skipOk(p))p.res.cr+=DRAFT_CR*Math.max(0,Math.min(3
 function bpick(p,t){let best,bs=-9;for(const c of valid(t)){const n=nb(c);let s=Math.random()*1.5;
  if(t=='s')s+=n.filter(x=>x.t=='f'||x.t=='w').length*2;
  else if(t=='f'||t=='w')s+=n.filter(x=>x.t=='s'&&x.o===p.i).length*2.5+n.filter(x=>x.t=='s').length;
- else if(t=='c')s+=n.filter(x=>x.t=='f').length;else if(t=='r')s+=n.filter(x=>!x.t).length*.3;
+ else if(t=='c')s+=n.filter(x=>x.t=='f').length;else if(t=='r')s+=n.filter(x=>!x.t).length*.3;else if(t=='x')s+=n.filter(x=>x.o!=null&&x.o!==p.i).length*2;
  if(s>bs){bs=s;best=c}}return best}
 async function botTurn(p){const g=G;if(p.draft&&p.draft.length)botDraft(p);
  for(let n=0;n<6;n++){const o=[];
@@ -409,15 +435,15 @@ async function botTurn(p){const g=G;if(p.draft&&p.draft.length)botDraft(p);
 
 /* ---------- GAME FLOW ---------- */
 let NB=3;
-function mk(i,ci,bot,name){const c=CORPS[ci],p={i,ci,c,bot,name:name||'',tr:TR0,vp:0,hand:[],tab:[],used:[],tok:{},sp:{},draft:null,
+function mk(i,ci,bot,name){const c=CORPS[ci],p={i,ci,c,bot,name:name||'',tr:TR0,vp:0,hand:[],tab:[],ev:[],used:[],tok:{},sp:{},draft:null,
  res:{cr:c.cr,sa:0,re:0,se:0,fc:0,bc:0,...c.st},pr:{cr:0,sa:0,re:0,se:0,fc:0,bc:0,...c.pr}};
- p.draft=[];for(let k=0;k<10;k++){const d=deal();if(d!=null)p.draft.push(d)}p.keep=5;if(bot)botDraft(p);return p} // everyone starts by seeing 10 cards and keeping 5
+ p.draft=[];for(let k=0;k<10;k++){const d=deal();if(d!=null)p.draft.push(d)}p.keep=5;for(let k=0;k<(c.cards||0);k++){const d=deal();if(d!=null)p.hand.push(d)}if(bot)botDraft(p);return p} // everyone starts by seeing 10 cards and keeping 5
 const modal=h=>{const m=$('#modal');m.onclick=null;m.innerHTML=h;m.hidden=false},closeModal=()=>{$('#modal').hidden=true};
 const chips=c=>[`<b>${c.cr}</b> Credits`,...Object.entries(c.st||{}).map(([k,v])=>`<b>${v}</b> ${R[k]}`),...Object.entries(c.pr||{}).map(([k,v])=>`<b>+${v}</b> ${R[k]} prod`)].map(x=>`<span>${x}</span>`).join('');
 /* names = the people in the game (seats 0,1,...); bots take the seats after them */
 function start(nb,code,names){au();LASTCUR=undefined;UNDO=null;names=names&&names.length?names:[myName()];
  G={code,nb,gen:1,t:{co:14,so:0,we:0},pend:[],log:[],cells:[],map:{},ps:[],deck:shuf(CARDS.map((_,k)=>k)),disc:[],over:false,cur:null,ti:0,phase:'pick',
-  seats:[...names.map(n=>({name:n,bot:false})),...Array.from({length:nb},()=>({name:'',bot:true}))],pick:0,taken:[],offer:shuf([0,1,2,3,4,5]).slice(0,3)};
+  seats:[...names.map(n=>({name:n,bot:false})),...Array.from({length:nb},()=>({name:'',bot:true}))],pick:0,taken:[],offer:shuf(CORPS.map((_,i)=>i)).slice(0,3)};
  for(let r=-4;r<=4;r++)for(let q=Math.max(-4,-r-4);q<=Math.min(4,-r+4);q++){const c={id:G.cells.length,q,r,x:HCOL*(q+r/2),y:HROW*r,t:null};G.cells.push(c);G.map[q+','+r]=c}
  shuf(G.cells).slice(0,8).forEach(c=>c.t='R');
  buildBoard();document.body.className='picking';pickScreen();share()}
@@ -436,8 +462,8 @@ function pickScreen(){PICKUI=true;
 function showPick(){modal(`<div class="pickp"><h2>Choose your corporation</h2><p>Three charters were offered to you. The other corporations go to your rivals.</p><div class="cards3">${G.offer.map(ci=>{const c=CORPS[ci];return corpCardHTML(c,ci)}).join('')}</div></div>`)}
 function choose(ci){if(!G||G.phase!=='pick'||G.pick!==ME||!G.offer.includes(ci))return;
  const s=G.pick,humans=G.seats.filter(x=>!x.bot).length;G.ps[s]=mk(s,ci,false,G.seats[s].name);G.taken.push(ci);G.pick++;
- if(G.pick<humans){G.offer=shuf([0,1,2,3,4,5].filter(i=>!G.taken.includes(i))).slice(0,3);pickScreen();share();return}
- const rest=shuf([0,1,2,3,4,5].filter(i=>!G.taken.includes(i)));
+ if(G.pick<humans){G.offer=shuf(CORPS.map((_,i)=>i).filter(i=>!G.taken.includes(i))).slice(0,3);pickScreen();share();return}
+ const rest=shuf(CORPS.map((_,i)=>i).filter(i=>!G.taken.includes(i)));
  for(let i=humans;i<G.seats.length;i++)G.ps[i]=mk(i,rest[i-humans],true);
  G.phase='play';G.ti=0;G.cur=order()[0].i;PICKUI=false;
  document.body.className='';closeModal();log('Generation 1 begins');sfx('card');render();runBots()}
@@ -513,8 +539,8 @@ const order=()=>{const n=G.ps.length,s=(G.gen-1)%n;return G.ps.map((_,i)=>G.ps[(
 const pname=p=>p.bot?p.c.n.split(' ')[0]:p.name||myName();
 /* name shown in "The returning world": the player's in-game name, same as on the player panels */
 const lname=p=>p.bot?(p.name?esc(p.name)+' (bot)':'Bot '+p.i):esc(p.name||myName());
-function income(){for(const p of G.ps){const r=p.res;r.bc+=r.fc;r.fc=0;r.cr+=p.tr+p.pr.cr;for(const k of['sa','re','se','fc','bc'])r[k]=Math.max(0,r[k]+p.pr[k]);p.used=[];
-  p.draft=[];for(let i=0;i<5;i++){const c=deal();if(c!=null)p.draft.push(c)}p.keep=3;if(p.bot)botDraft(p)}
+function income(){for(const p of G.ps){const r=p.res;r.bc+=r.fc*(p.c.fcbc||1);r.fc=0;r.cr+=p.tr+p.pr.cr;for(const k of['sa','re','se','fc','bc'])r[k]=Math.max(0,r[k]+p.pr[k]);p.used=[];
+  p.draft=[];for(let i=0;i<(p.c.see||5);i++){const c=deal();if(c!=null)p.draft.push(c)}p.keep=3;if(p.bot)botDraft(p)}
  G.gen++;log(`Generation ${G.gen} begins`);sfx('gen')}
 /* pass the turn to the next player; after the last one, income arrives and a new generation starts. Returns false when the game ends */
 function nextSeat(){G.ti++;
@@ -532,28 +558,55 @@ function fin(){G.over=true;const r=[...G.ps].sort((a,b)=>score(b)-score(a));shar
 /* ---------- LOBBY (local demo: lobbies are stored in this browser) ---------- */
 const esc=s=>String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])),myName=()=>NAME.trim()||'You';
 function setName(v){NAME=v.slice(0,16);try{localStorage.ss_name=NAME}catch(e){}}
+/* NAME LOCK: you must lock in a name before hosting or joining a lobby. A name saved from an earlier visit starts locked. */
+let NAMELOCK=!!NAME.trim();
+function nameUI(warn){const i=$('#pname'),b=$('#nlb'),h=$('#nhint');if(!i)return;i.disabled=NAMELOCK;b.textContent=NAMELOCK?'Change':'Lock in';b.classList.toggle('pri',!NAMELOCK);
+ h.className='nhint'+(NAMELOCK?' ok':warn?' warn':'');
+ h.innerHTML=NAMELOCK?`✓ Playing as <b>${esc(NAME.trim())}</b>`:warn||'Type your name and press <b>Lock in</b> to host or join a lobby.'}
+function lockName(){if(NAMELOCK){if(NET){nameUI();$('#nhint').innerHTML='Leave the lobby to change your name.';return}NAMELOCK=false;nameUI();$('#pname').focus();return}
+ const v=$('#pname').value.trim();if(!v){nameUI('Type a name first, then press <b>Lock in</b>.');$('#pname').focus();return}
+ setName(v);$('#pname').value=NAME;NAMELOCK=true;nameUI()}
+function needName(){if(NAMELOCK)return true;nameUI('Lock in your name first, then host or join.');$('#pname').focus();return false}
 function setNb(n){NB=n;document.querySelectorAll('#nbseg button').forEach(b=>b.classList.toggle('on',+b.dataset.n==n))}
 const BRAND=`${LOGO.replace('width="40" height="40"','width="56" height="56"')}<div><h1>Second Spring</h1><small>The returning world</small></div>`;
 function lobby(){netStop();G=null;BOARD=null;document.body.className='lobby';closeModal();$('#set').hidden=true;$('#lob').hidden=false;
  $('#lob').innerHTML=`<div class="lobp panel"><div class="brand"><img class="blogo" src="ui/logo.png" alt="Second Spring" width="250" style="width:250px;max-width:70%;height:auto;display:block;margin:0 auto" onerror="this.parentNode.innerHTML=BRAND"><small>The returning world</small></div>
- <div class="rowl"><span>Your name</span><input class="nin" id="pname" maxlength="16" placeholder="Player" aria-label="Your name" value="${esc(NAME)}" oninput="setName(this.value)"></div>
+ <div class="rowl"><span>Your name</span><div class="nlk"><input class="nin" id="pname" maxlength="16" placeholder="Player" aria-label="Your name" value="${esc(NAME)}" oninput="setName(this.value)" onkeydown="if(event.key=='Enter')lockName()"><button id="nlb" onclick="lockName()">Lock in</button></div></div><p id="nhint" class="nhint"></p>
  <div class="rowl"><span>Rival bots</span><div class="segb" id="nbseg">${[1,2,3].map(n=>`<button data-n="${n}" onclick="setNb(${n})">${n}</button>`).join('')}</div></div>
  <div class="modes"><section><h2>Solo</h2><p>Restore the world on your own against bot corporations.</p><button class="pri" onclick="start(NB,'SOLO')">Play solo</button></section>
- <section><h2>Lobby</h2><p>Host a lobby and share its code, or join one.</p><button onclick="mkRoom()">Host a lobby</button><div class="join"><input id="jc" maxlength="5" placeholder="CODE" aria-label="Lobby code" onkeydown="if(event.key=='Enter')joinRoom()"><button onclick="joinRoom()">Join</button></div><div id="lm"></div></section></div></div>`;setNb(NB)}
+ <section><h2>Lobby</h2><p>Host a lobby and share its code, or join one.</p><button onclick="mkRoom()">Host a lobby</button><div class="join"><input id="jc" maxlength="200" placeholder="CODE OR LINK" aria-label="Lobby code or link" onkeydown="if(event.key=='Enter')joinRoom()"><button onclick="joinRoom()">Join</button></div><div id="lm"></div></section></div></div>`;setNb(NB);nameUI();roomUrl('')}
 /* ---------- ONLINE LOBBIES (needs server.py) ---------- */
 const api=async(path,body)=>{const r=await fetch('api/'+path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{cache:'no-store'});
  const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||'Server error'),{status:r.status});return j};
 const NOSRV='Online lobbies need the game server. Start it with <b>py server.py</b> in the game folder and open the game from it. Solo works anywhere.';
-async function mkRoom(){au();if(NET||JOINING)return;JOINING=true;try{netStart(await api('room',{name:myName(),bots:NB,cid:CID}))}catch(e){$('#lm').innerHTML=`<small>${e.status?esc(e.message):NOSRV}</small>`}finally{JOINING=false}}
-async function joinRoom(){au();const c=$('#jc').value.trim().toUpperCase();if(!c||JOINING||(NET&&NET.code===c))return;JOINING=true;
+async function mkRoom(){au();if(NET||JOINING||!needName())return;JOINING=true;try{netStart(await api('room',{name:myName(),bots:NB,cid:CID}))}catch(e){$('#lm').innerHTML=`<small>${e.status?esc(e.message):NOSRV}</small>`}finally{JOINING=false}}
+/* the Join box takes a code (ABCDE) or a whole link (https://…/ABCDE): the code is the last part of the address */
+const codeOf=v=>{v=String(v).trim().split(/[?#]/)[0].replace(/\/+$/,'');return(v.split('/').pop()||'').toUpperCase()};
+async function joinRoom(){au();const c=codeOf($('#jc').value);if(!c||JOINING||(NET&&NET.code===c)||!needName())return;JOINING=true;
  try{netStart(await api('join',{code:c,name:myName(),cid:CID}))}catch(e){$('#lm').innerHTML=`<small>${e.status?esc(e.message):NOSRV}</small>`}finally{JOINING=false}}
 /* CID = this browser tab's id, so pressing Join twice can never take two seats */
 const CID=(()=>{try{return sessionStorage.ss_cid||(sessionStorage.ss_cid=Math.random().toString(36).slice(2)+Date.now().toString(36))}catch(e){return Math.random().toString(36).slice(2)}})();let JOINING=false;
-function netStart(r){netStop();NET={code:r.code,token:r.token,seat:r.seat,v:0,status:'open',players:r.players||[],bots:r.bots||0,q:Promise.resolve(),busy:0,last:'',timer:0};ME=r.seat;lobbyRoom();NET.timer=setTimeout(poll,600)}
+/* ROOM LINKS: the lobby code is shown in the address (…/ABCDE). Your seat ticket (token) is saved in this browser:
+   sessionStorage = this tab only (so 2 test tabs keep their own seats), localStorage = also after the tab is closed.
+   Reloading the page or opening the link again puts you back in your seat. */
+const CODE_RE=/^[A-HJ-NP-Z2-9]{5}$/;
+const urlCode=()=>{let c='';try{c=decodeURIComponent(location.pathname.split('/').pop()||'').toUpperCase()}catch(e){}return CODE_RE.test(c)?c:''};
+function roomUrl(code){try{if(code!==urlCode())history.replaceState(null,'',code||'./')}catch(e){}}
+function seatSave(r){const v=JSON.stringify({token:r.token,seat:r.seat});try{sessionStorage['ss_room_'+r.code]=v;localStorage['ss_room_'+r.code]=v}catch(e){}}
+function seatLoad(c){try{return JSON.parse(sessionStorage['ss_room_'+c]||localStorage['ss_room_'+c]||'null')}catch(e){return null}}
+function seatForget(c){try{delete sessionStorage['ss_room_'+c];delete localStorage['ss_room_'+c]}catch(e){}}
+async function rejoin(c){if(!c)return;const s=seatLoad(c);
+ if(!s||!s.token){$('#jc').value=c;$('#lm').innerHTML=`<small>${NAMELOCK?'Press <b>Join</b> to enter lobby '+c+'.':'Lock in your name, then press <b>Join</b> to enter lobby '+c+'.'}</small>`;return} // someone shared the link: the code is filled in
+ JOINING=true;$('#lm').innerHTML='<small>Rejoining…</small>';
+ try{const r=await api(`room?code=${c}&token=${encodeURIComponent(s.token)}&v=999999999`); // a huge v = "don't send the game yet", the normal poll fetches it
+  netStart({code:c,token:s.token,seat:s.seat,players:r.players,bots:r.bots});if(r.status!=='open')$('#lm').innerHTML='<small>Rejoining the game…</small>'}
+ catch(e){if(e.status===404||e.status===403){seatForget(c);$('#lm').innerHTML='<small>That lobby has closed.</small>'}else $('#lm').innerHTML=`<small>${NOSRV}</small>`}
+ finally{JOINING=false}}
+function netStart(r){netStop();seatSave(r);roomUrl(r.code);NET={code:r.code,token:r.token,seat:r.seat,v:0,status:'open',players:r.players||[],bots:r.bots||0,q:Promise.resolve(),busy:0,last:'',timer:0};ME=r.seat;lobbyRoom();NET.timer=setTimeout(poll,600)}
 function netStop(){if(NET)clearTimeout(NET.timer);NET=null;ME=0}
 function netLeave(){netStop();lobby()}
 function lobbyRoom(){if(!NET||NET.status!=='open'||!$('#lm'))return;const host=NET.seat===0,nb=Math.min(NET.bots,4-NET.players.length);
- $('#lm').innerHTML=`<div class="code"><span>${NET.code}</span><button onclick="navigator.clipboard&&navigator.clipboard.writeText('${NET.code}')">Copy</button></div>
+ $('#lm').innerHTML=`<div class="code"><span>${NET.code}</span><button onclick="navigator.clipboard&&navigator.clipboard.writeText(new URL('${NET.code}',location.href).href)">Copy link</button></div>
  <small>Players ${NET.players.length}/4: ${NET.players.map((n,i)=>`<b>${esc(n)}</b>${i===NET.seat?' (you)':''}`).join(', ')}${nb?` · plus ${nb} bot${nb>1?'s':''}`:''}</small>
  ${host?`<button class="pri" onclick="hostStart()">Start game</button>`:'<small>Waiting for the host to start…</small>'}<button onclick="netLeave()">Leave lobby</button>`}
 function hostStart(){if(!NET||NET.seat!==0||NET.status!=='open')return;clearTimeout(NET.timer);
@@ -685,7 +738,7 @@ function drawCell(c){const k=(c.t||'')+(c.o??'');if(c.dk===k)return;const first=
 /* best places: a Forest next to a Wetland or your own Wildlife Corridor; a Corridor touching a Wetland or 2+ Forests. If there are none, every legal place glows */
 function best(t,v){const n=c=>nb(c),f=t=='f'?v.filter(c=>n(c).some(x=>x.t=='w'||(x.t=='c'&&x.o===ME))):t=='c'?v.filter(c=>n(c).filter(x=>x.t=='f'||x.t=='w').length>=2):v;return f.length?f:v}
 function mark(){const v=typeof G.pend[0]=='string'&&myTurn()?valid(G.pend[0]):[],bv=v.length?best(G.pend[0],v):[];G.cells.forEach(c=>{const e=document.getElementById('h'+c.id);e.classList.toggle('ok',bv.includes(c));e.classList.toggle('ok2',v.includes(c)&&!bv.includes(c))})}
-function fx(c,t){const g=document.createElementNS(NS,'g'),col={w:'#c7ecff',f:'#a5df84',s:'#f3dcae',p:'#b4eeff',c:'#bfe99a',r:'#d3c3b0'}[t];g.setAttribute('transform',`translate(${c.x},${c.y})`);let h='';
+function fx(c,t){const g=document.createElementNS(NS,'g'),col={w:'#c7ecff',f:'#a5df84',s:'#f3dcae',p:'#b4eeff',c:'#bfe99a',r:'#d3c3b0',x:'#ffb36b'}[t];g.setAttribute('transform',`translate(${c.x},${c.y})`);let h='';
  if(t=='w')for(let i=0;i<3;i++)h+=`<circle class="ring" r="6" style="animation-delay:${i*.18}s"/>`;
  for(let i=0;i<9;i++){const a=i/9*6.28,d=24+Math.random()*14,w=t=='w';h+=`<circle class="pt" r="${w?2.5:2}" fill="${col}" style="--dx:${(Math.cos(a)*d).toFixed(1)}px;--dy:${(w?-20-Math.random()*20:Math.sin(a)*d*FY).toFixed(1)}px"/>`}
  g.innerHTML=h;$('#fx').appendChild(g);setTimeout(()=>g.remove(),1300)}
@@ -716,7 +769,7 @@ const TSYM={co:CO2SVG,so:LEAF,we:DROP};
 const tIcon=k=>`<span class="ts t-${k}">${TSYM[k]}</span>`;
 const CARDIC='<span class="mcard"></span>';
 const efR=(sg,n,k,prod)=>`<span class="ef"><span class="n">${sg}${n}</span>${prod?`<span class="pb" style="--c:${RCOL[k]}">${resIcon(k)}</span>`:resIcon(k)}</span>`;
-const TFILE={f:'forest',w:'wetland',s:'settlement',p:'power',c:'corridor',r:'ruin'};
+const TFILE={f:'forest',w:'wetland',s:'settlement',p:'power',c:'corridor',r:'ruin',x:'ruin'};
 const synIc=k=>`<img class="syi" src="ui/syn/${k}.svg" alt="${SYN[k]?SYN[k].n:k}" title="${SYN[k]?SYN[k].n:k}">`;
 const tileIc=t=>`<span class="tl"><img src="tile-art/${TFILE[t]}.png" alt="${LN[t]}" title="${LN[t]}"></span>`;
 const TKN='<span class="tkn" title="Token on this card"></span>';
@@ -768,7 +821,7 @@ function pfBar(ids){if(!ids.length)return'';const sy=Object.keys(SYN).filter(k=>
 const pfGrid=(p,ids)=>{const sh=pfShown(ids);return ids.length&&!sh.length?'<div class="none">No card has all of these.</div>':cardsGrid(p,sh)};
 function pfTog(g,k){if(g)PF[g].has(k)?PF[g].delete(k):PF[g].add(k);else PF={s:new Set(),y:new Set()};
  const sc=document.querySelector('.pv')?.scrollTop;if(PFV)PFV();const e=document.querySelector('.pv');if(e&&sc)e.scrollTop=sc}
-function showPlayed(keep){if(!G||!G.ps.length)return;if(!keep)PF={s:new Set(),y:new Set()};PFV=()=>showPlayed(1);const p=G.ps[ME],ids=p.tab.filter(id=>CARDS[id].y!='A');modal(`<div class="pv" style="--c:${PC[ME]}"><div class="pvh"><div><h2>Your played cards</h2><small>${ids.length} cards</small></div><button style="margin-left:auto" onclick="closeModal()">Close</button></div>${pfBar(ids)}${pfGrid(p,ids)}</div>`);dismiss()}
+function showPlayed(keep){if(!G||!G.ps.length)return;if(!keep)PF={s:new Set(),y:new Set()};PFV=()=>showPlayed(1);const p=G.ps[ME],ids=[...p.tab.filter(id=>CARDS[id].y!='A'),...(p.ev||[])];modal(`<div class="pv" style="--c:${PC[ME]}"><div class="pvh"><div><h2>Your played cards</h2><small>${ids.length} cards</small></div><button style="margin-left:auto" onclick="closeModal()">Close</button></div>${pfBar(ids)}${pfGrid(p,ids)}</div>`);dismiss()}
 /* ---------- CARDS PAGE (Settings → Cards): every card in the game, with filter buttons for synergies and card types ---------- */
 let CF={s:new Set(),y:new Set()};
 function cardsPage(){$('#set').hidden=true;const P0={c:{n:''}},TY={B:'Build',A:'Active',E:'Event'},TC={B:'#4CBB17',A:'#0047AB',E:'#FF5F1F'};
@@ -779,9 +832,16 @@ function cardsPage(){$('#set').hidden=true;const P0={c:{n:''}},TY={B:'Build',A:'
  <div class="pcg">${list.length?list.map(cd=>`<div class="pcw">${cardHTML(cd,P0)}</div>`).join(''):'<div class="none">No card has all of these.</div>'}</div></div>`);dismiss()}
 function cfTog(g,k){CF[g].has(k)?CF[g].delete(k):CF[g].add(k);const sc=document.querySelector('.cpg')?.scrollTop;cardsPage();const e=document.querySelector('.cpg');if(e&&sc)e.scrollTop=sc}
 function viewPlayer(i,keep){if(!G||!G.ps[i])return;const p=G.ps[i];if(!keep)PF={s:new Set(),y:new Set()};PFV=()=>viewPlayer(i,1);
- modal(`<div class="pv" style="--c:${PC[p.i]}"><div class="pvh">${mono(p.c)}<div><h2>${p.c.n}</h2><small>${p.bot?'Bot':esc(p.name||myName())} · ${p.c.t} · TR ${p.tr}</small></div>${symHTML(p.i,26)}<span class="vp cvp" title="Victory points">${WREATH}<b>${score(p)}</b></span><button onclick="closeModal()">Close</button></div><div class="pvtop"><div class="pvcorp">${corpCardHTML(p.c,p.ci,true)}</div><div class="pvr">${Object.keys(R).map(k=>`<div class="r" style="--c:${RCOL[k]}">${resIcon(k)}<span>${p.res[k]}</span><i>+${k=='cr'?p.tr+p.pr.cr:p.pr[k]}</i></div>`).join('')}</div></div><h3>Cards in play · ${p.tab.length}</h3>${pfBar(p.tab)}${pfGrid(p,p.tab)}</div>`);dismiss()}
+ modal(`<div class="pv" style="--c:${PC[p.i]}"><div class="pvh">${mono(p.c)}<div><h2>${p.c.n}</h2><small>${p.bot?'Bot':esc(p.name||myName())} · ${p.c.t} · TR ${p.tr}</small></div>${symHTML(p.i,26)}<span class="vp cvp" title="Victory points">${WREATH}<b>${score(p)}</b></span><button onclick="closeModal()">Close</button></div><div class="pvtop"><div class="pvcorp">${corpCardHTML(p.c,p.ci,true)}</div><div class="pvr">${Object.keys(R).map(k=>`<div class="r" style="--c:${RCOL[k]}">${resIcon(k)}<span>${p.res[k]}</span><i>+${k=='cr'?p.tr+p.pr.cr:p.pr[k]}</i></div>`).join('')}</div></div>${(ids=>`<h3>Played cards · ${ids.length}</h3>${pfBar(ids)}${pfGrid(p,ids)}`)([...p.tab,...(p.ev||[])])}</div>`);dismiss()}
 const STDRES={Seeds:'se',Biochar:'bc',Cr:'cr'};
 function stdLabel(l){const m=l.match(/^(\d+) (\w+) → (.*)$/);if(!m||!STDRES[m[2]])return l;return`<span class="sn">${m[1]}</span>${resIcon(STDRES[m[2]])}<span class="sa">→</span><span>${m[3]}</span>`}
+/* size of your Active cards: the 2 deck columns (+10 px gap) fill the space between the board's hexes and the right edge,
+   but never smaller than before (13.8) and never taller than one row (h). 84 = the right margin of #tab, 24 = gap to the board.
+   #cells = the drawn hexes (the #bd box is wider than the hexes, so it would waste space) */
+function tabU(h){const bd=($('#cells')||$('#bd')).getBoundingClientRect(),free=innerWidth-84-24-bd.right;
+ return Math.max(13.8,Math.min(22,(free-10)/20,h/14.6))}
+function tabFits(){const t=$('#tab').getBoundingClientRect(),g=$('#gen').getBoundingClientRect(),l=$('#log').getBoundingClientRect();
+ return!t.height||(t.bottom<=g.top-8&&t.top>=l.bottom+8)}
 function render(){autoKeep();renderUI();share();oppPlays()}
 function renderUI(){if(!G||G.phase!=='play'||!G.ps.length)return;const p=G.ps[ME],b=busy();
  const sgm=(n,t)=>Array.from({length:t},(_,i)=>`<i class="${i<n?'on':i==n?'nxt':''}"></i>`).join(''),
@@ -813,17 +873,21 @@ function renderUI(){if(!G||G.phase!=='play'||!G.ps.length)return;const p=G.ps[ME
  $('#std').innerHTML='';
  genUpdate(b);
  $('#deck').innerHTML=`<div class="pile">${G.deck.length?Array.from({length:Math.min(5,Math.ceil(G.deck.length/6))},()=>`<div class="cb">${CBACK}</div>`).join(''):'<div class="cb empty"></div>'}</div><small>${G.deck.length} cards left</small>`;
- const pl=p.tab.filter(id=>CARDS[id].y!='A').length;
+ const pl=p.tab.filter(id=>CARDS[id].y!='A').length+(p.ev||[]).length;
  $('#played').innerHTML=`<div class="pile">${pl?Array.from({length:Math.min(4,pl)},()=>'<div class="cb pl"><b>Played</b></div>').join('').replace(/<b>Played<\/b><\/div>$/,'<b>Played</b><span class="pn">'+pl+'</span></div>'):'<div class="cb empty"></div>'}</div><small>${pl} played</small>`;
  $('#log').innerHTML=G.log.join('<br>');
  const a=$('#ask'),p0=G.pend[0];a.hidden=!G.pend.length||!myTurn();a.innerHTML=!G.pend.length?'':typeof p0=='string'?`Place: ${LN[p0]} · glowing hexes are the best spots, any outlined hex works${UNDO?'<button class="undo" onclick="undo()">Undo</button>':''}`
   :`${{Q:'Steal up to',X:'A rival loses up to',Z:'A rival loses'}[p0.rv]} ${p0.n} ${R[p0.r]}${p0.rv=='Z'?' production':''} · choose the rival:${G.ps.filter(x=>x&&x.i!==ME).map(x=>`<button class="undo" onclick="uiRival(${x.i})">${esc(pname(x))}</button>`).join('')}`;
  if(G.cur===ME&&LASTCUR!==undefined&&LASTCUR!==ME&&myTurn())sfx('turn');LASTCUR=G.cur;
  /* your Active cards: 4 decks in a 2×2 square; each deck stacks like the old single pile (top card first). Order comes from LAY */
- layoutFix(p);const SH2=13.8*14.6,AH=(Math.max(300,innerHeight-380)-10)/2, // 2 rows of decks share the height the old pile had
+ layoutFix(p);const AH=(Math.max(300,innerHeight-380)-10)/2, // 2 rows of decks share the height the old pile had
+ drawTab=TU=>{const CW=Math.round(TU*10),SH2=TU*14.6, // TU = card size unit
  deck=(acts,n)=>{const k=acts.length,off=k>1?Math.max(40,Math.min(84,(AH-SH2)/(k-1))):0;
-  return`<div class="stk${k?'':' empty'}" data-deck="${n}" data-off="${Math.round(off)}" style="width:138px;height:${Math.round(SH2+(k?k-1:0)*off)}px">${acts.map((id,j)=>{const cd=CARDS[id],ha=!!aparse(id),used=ha&&p.used.includes(id),dis=!ha||used||b||!canAct(p,id);return`<div class="stkw" data-id="${id}" style="--u:13.8px;top:${Math.round(j*off)}px;z-index:${k-j};--off:${Math.round(off)}px">${cardHTML(cd,p,{used,no:ha&&dis&&!used,tok:p.tok[id]})}<button class="hit${j?'':' full'}" ${dis?'disabled':''} onclick="uiAct(${id})" title="${cd.n}"></button></div>`}).join('')}</div>`};
- $('#tab').innerHTML=LAY.d.some(d=>d.length)?`<div class="decks">${LAY.d.map(deck).join('')}</div>`:'';
+  return`<div class="stk${k?'':' empty'}" data-deck="${n}" data-off="${Math.round(off)}" style="width:${CW}px;height:${Math.round(SH2+(k?k-1:0)*off)}px">${acts.map((id,j)=>{const cd=CARDS[id],ha=!!aparse(id),used=ha&&p.used.includes(id),dis=!ha||used||b||!canAct(p,id);return`<div class="stkw" data-id="${id}" style="--u:${TU}px;top:${Math.round(j*off)}px;z-index:${k-j};--off:${Math.round(off)}px">${cardHTML(cd,p,{used,no:ha&&dis&&!used,tok:p.tok[id]})}<button class="hit${j?'':' full'}" ${dis?'disabled':''} onclick="uiAct(${id})" title="${cd.n}"></button></div>`}).join('')}</div>`};
+ $('#tab').innerHTML=LAY.d.some(d=>d.length)?`<div class="decks" style="--tw:${CW}px">${LAY.d.map(deck).join('')}</div>`:''};
+ /* start as big as the free space right of the board allows, then shrink step by step (never below 13.8)
+    until the decks stay clear of the game log above and the generation wheel below */
+ let TU=tabU(AH);drawTab(TU);while(TU>13.8&&!tabFits()){TU=Math.max(13.8,TU-.5);drawTab(TU)}
  const hn=p.hand.length,avail=Math.min(innerWidth*.9-40,1060),hm=hn>1?Math.min(8,(avail-hn*172.5)/(hn-1)):0,mid=(hn-1)/2,tilt=Math.min(3.4,22/Math.max(hn,1));
  $('#hand').oncontextmenu=cycleSort;$('#hand').innerHTML=`<div class="hh" onclick="tgh()">${hn} CARDS · HOVER TO REVEAL</div><div class="cs">${handOrder(p).map((i,j)=>{const id=p.hand[i],cd=CARDS[id],ok=!b&&canPlay(p,cd),d=j-mid;return`<div class="pcw" data-hi="${id}" style="--u:17.25px;margin-left:${j?hm:0}px" onclick="uiPlay(${i},this)">${cardHTML(cd,p,{no:!ok,need:!b&&!pay(p,cd,0),st:`--r:${(d*tilt).toFixed(1)}deg;--y:${Math.round(d*d*1.4)}px`})}</div>`}).join('')}</div>`;
  G.cells.forEach(drawCell);mark();
@@ -917,7 +981,7 @@ document.addEventListener('keyup',e=>{if(e.key==' '||e.key=='Enter')holdStop()})
 window.addEventListener('blur',holdStop);
 
 /* ---------- CORPORATION CARDS (pick screen) ---------- */
-const CORP_SLICE=[8,70,34,96,52,18]; // which slice of the card picture each corporation shows (percent across the picture)
+const CORP_SLICE=[8,70,34,96,52,18,60,26,84,44,0,78]; // which slice of the card picture each corporation shows (percent across the picture)
 const cRes=(k,cls='cri')=>`<img class="${cls}" src="resources/${RFILE[k]}.png" alt="">`;
 const cPbox=k=>`<span class="pbox" style="--rc:${RCOL[k]}">${cRes(k,'')}</span>`;
 const cTile=(t,badge)=>`<span class="tile"><img src="tile-art/${t}.png" alt="">${badge?'<svg class="badge" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="var(--badge-green)" stroke="var(--card-paper-light)" stroke-width="2"/><path d="M7 12.4 L10.6 16 L17.2 8.6" fill="none" stroke="var(--badge-green-ink)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg>':''}</span>`;
@@ -925,18 +989,27 @@ const cColon='<svg class="op colon" viewBox="0 0 14 38" aria-hidden="true"><g><p
 const cEq='<svg class="op eq" viewBox="0 0 16 34" aria-hidden="true"><path d="M2 11 H14 L12.5 15.5 H3.5 Z" fill="var(--hue-dark)"/><path d="M2 20 H14 L12.5 24.5 H3.5 Z" fill="var(--hue-dark)"/><path d="M2 11 H8 L7 15.5 H3.5 Z" fill="var(--hue-light)"/><path d="M2 20 H8 L7 24.5 H3.5 Z" fill="var(--hue-light)"/></svg>';
 const cBio='<svg class="biocard" viewBox="0 0 30 42" aria-hidden="true"><rect x="1" y="1" width="28" height="40" rx="4.5" fill="var(--card-plate)" stroke="var(--card-outline)" stroke-width="1.6"/><path d="M1 5.5 a4.5 4.5 0 0 1 4.5 -4.5 H9 V41 H5.5 a4.5 4.5 0 0 1 -4.5 -4.5 Z" fill="var(--type-build)"/><g transform="translate(1.5 1)"><path d="M13 31 L13.8 18.5 L24 11 L26.5 12 L25 23 Z" fill="#6aa04a"/><path d="M13 31 L13.8 18.5 L24 11 L26.5 12 Z" fill="#b7dd8a"/><path d="M13 31 L17.5 22" stroke="#4c7f3a" stroke-width="1.2" stroke-linecap="round"/></g></svg>';
 const cRew=(k,n)=>`<span class="rew">${cPbox(k)}<span class="n">+${n}</span></span>`;
-const CDIAG={'greenline-reclamation':()=>cTile('forest')+cColon+`<span class="rew">${cRes('cr')}<span class="n">+1</span></span>`,
- 'ashfall-recycling':()=>cTile('ruin',1)+cColon+`<span class="rew">${cRes('sa')}<span class="n">+1</span></span>`,
- 'vireo-seed-bank':()=>cBio+cColon+cRes('se')+cEq+`<span class="rew vi">${cRes('cr')}<span class="n">2</span></span>`,
- 'meridian-fusion':()=>cTile('power')+cColon+'<span class="rew"><span class="costbox"><span class="n">-4</span></span></span>',
- 'delta-rewilding-trust':()=>cTile('wetland')+cColon+cRew('bc',1),
- 'cairn-heavy-industries':()=>cTile('settlement')+cColon+cRew('sa',1)};
+const cSyn=k=>`<img class="cri" src="ui/syn/${k}.svg" alt="${SYN[k].n}">`;
+const cCard=col=>`<svg class="biocard" viewBox="0 0 30 42" aria-hidden="true"><rect x="1" y="1" width="28" height="40" rx="4.5" fill="var(--card-plate)" stroke="var(--card-outline)" stroke-width="1.6"/><path d="M1 5.5 a4.5 4.5 0 0 1 4.5 -4.5 H9 V41 H5.5 a4.5 4.5 0 0 1 -4.5 -4.5 Z" fill="${col}"/></svg>`;
+const cCost=n=>`<span class="rew"><span class="costbox"><span class="n">-${n}</span></span></span>`,cGain=(k,n)=>`<span class="rew">${cRes(k)}<span class="n">+${n}</span></span>`;
+const CDIAG={'nomad-caravan-union':()=>cCard('#E8871E')+cColon+cCost(2),
+ 'tinker-collective':()=>cCard('#0047AB')+cColon+cCost(1),
+ 'northstar-cartographers':()=>`<span class="rew"><span class="n">6</span>${cCard('#8a8f86')}</span>`+cColon+`<span class="rew"><span class="n">3</span>${cCard('#4CBB17')}</span>`,
+ 'rubblewright-salvors':()=>cTile('ruin',1)+cColon+cGain('sa',4)+cGain('cr',3),
+ 'cinderbloom-kilns':()=>cRes('fc')+cEq+`<span class="rew vi">${cRes('bc')}<span class="n">2</span></span>`,
+ 'hollowfen-rangers':()=>cSyn('wildlife')+cCost(3)+cTile('corridor')+`<span class="rew"><span class="n">+1</span><span style="display:block;width:calc(34 * var(--u));height:calc(34 * var(--u))">${WREATH}</span></span>`,
+ 'cairn-heavy-industries':()=>cTile('settlement')+cColon+cRew('sa',1),
+ 'lumen-institute':()=>cSyn('science')+cColon+cCost(2),
+ 'ironvale-foundries':()=>cSyn('industry')+cColon+cRes('sa')+cEq+`<span class="rew vi">${cRes('cr')}<span class="n">3</span></span>`,
+ 'kessel-engineworks':()=>cSyn('engine')+cColon+cGain('re',1),
+ 'loamwright-farms':()=>'<img class="cri" src="ui/track-soil.svg" alt="Soil">'+cColon+cGain('se',2),
+ 'brightwater-grid':()=>cSyn('power')+cColon+cGain('fc',3)};
 const cNum=t=>esc(t).replace(/[+-]?\d+/g,m=>`<span class="n">${m}</span>`);
 function corpCardHTML(c,ci,still){const s=slug(c.n),st=Object.entries(c.st||{}),pr=Object.entries(c.pr||{}),
- parts=[c.cr+' Cr',...st.map(([k,v])=>v+' '+R[k]),...pr.map(([k,v])=>'+'+v+' '+R[k]+' production')],
+ parts=[c.cr+' Cr',...st.map(([k,v])=>v+' '+R[k]),...pr.map(([k,v])=>'+'+v+' '+R[k]+' production'),...(c.cards?[c.cards+' extra cards']:[])],
  line='(Start with '+(parts.length==1?parts[0]:parts.slice(0,-1).join(', ')+' and '+parts[parts.length-1])+'.)',
  figs=`<span class="fig credits">${cRes('cr','')}<span class="n">${c.cr}</span></span>`+st.map(([k,v])=>`<span class="fig stock">${cRes(k,'')}<span class="n">${v}</span></span>`).join('')+pr.map(([k,v])=>`<span class="fig prod">${cPbox(k)}<span class="n">+${v}</span></span>`).join('');
- return`<article class="corp-card" style="--h:${c.h};--bgx:${CORP_SLICE[ci%6]}%${c.bg?`;--corp-bg:url(${c.bg})`:''}" ${still?`aria-label="${c.n}"`:`tabindex="0" role="button" aria-label="Choose ${c.n}" onclick="choose(${ci})" onkeydown="if(event.key=='Enter')choose(${ci})"`}>
+ return`<article class="corp-card" style="--h:${c.h};--bgx:${CORP_SLICE[ci%CORP_SLICE.length]}%${c.bg?`;--corp-bg:url(${c.bg})`:''}" ${still?`aria-label="${c.n}"`:`tabindex="0" role="button" aria-label="Choose ${c.n}" onclick="choose(${ci})" onkeydown="if(event.key=='Enter')choose(${ci})"`}>
 <div class="sheet"></div><div class="band-lit"></div><div class="rules"></div>
 <div class="tab"><svg viewBox="0 0 214 33" preserveAspectRatio="none" aria-hidden="true"><path d="M0 0 H214 L203.5 24.5 Q200.5 32 192 32 H22 Q13.5 32 10.5 24.5 Z" fill="var(--hue-light)" stroke="var(--card-outline)" stroke-width="1.6" stroke-linejoin="round"/><path d="M7 1.8 H207 L199 22 Q197 28.5 190 28.5 H24 Q17 28.5 15 22 Z" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.1"/></svg><span>CORPORATION</span></div>
 <div class="seal"><svg viewBox="0 0 56 56" aria-hidden="true"><path d="M54.30,28.00 L54.11,28.68 L53.57,29.34 L52.77,29.95 L51.85,30.51 L50.95,31.02 L50.22,31.52 L49.78,32.04 L49.66,32.60 L49.88,33.25 L50.36,33.99 L50.99,34.81 L51.63,35.68 L52.14,36.55 L52.38,37.36 L52.30,38.06 L51.86,38.62 L51.11,39.02 L50.14,39.28 L49.07,39.44 L48.05,39.58 L47.19,39.76 L46.57,40.06 L46.25,40.54 L46.20,41.23 L46.37,42.09 L46.64,43.09 L46.90,44.14 L47.03,45.13 L46.95,45.98 L46.60,46.60 L45.98,46.95 L45.13,47.03 L44.14,46.90 L43.09,46.64 L42.09,46.37 L41.23,46.20 L40.54,46.25 L40.06,46.57 L39.76,47.19 L39.58,48.05 L39.44,49.07 L39.28,50.14 L39.02,51.11 L38.62,51.86 L38.06,52.30 L37.36,52.38 L36.55,52.14 L35.68,51.63 L34.81,50.99 L33.99,50.36 L33.25,49.88 L32.60,49.66 L32.04,49.78 L31.52,50.22 L31.02,50.95 L30.51,51.85 L29.95,52.77 L29.34,53.57 L28.68,54.11 L28.00,54.30 L27.32,54.11 L26.66,53.57 L26.05,52.77 L25.49,51.85 L24.98,50.95 L24.48,50.22 L23.96,49.78 L23.40,49.66 L22.75,49.88 L22.01,50.36 L21.19,50.99 L20.32,51.63 L19.45,52.14 L18.64,52.38 L17.94,52.30 L17.38,51.86 L16.98,51.11 L16.72,50.14 L16.56,49.07 L16.43,48.05 L16.24,47.19 L15.94,46.57 L15.46,46.25 L14.77,46.20 L13.91,46.37 L12.91,46.64 L11.86,46.90 L10.87,47.03 L10.02,46.95 L9.40,46.60 L9.05,45.98 L8.97,45.13 L9.10,44.14 L9.36,43.09 L9.63,42.09 L9.80,41.23 L9.75,40.54 L9.43,40.06 L8.81,39.76 L7.95,39.58 L6.93,39.44 L5.86,39.28 L4.89,39.02 L4.14,38.62 L3.70,38.06 L3.62,37.36 L3.86,36.55 L4.37,35.68 L5.01,34.81 L5.64,33.99 L6.12,33.25 L6.34,32.60 L6.22,32.04 L5.78,31.52 L5.05,31.02 L4.15,30.51 L3.23,29.95 L2.43,29.34 L1.89,28.68 L1.70,28.00 L1.89,27.32 L2.43,26.66 L3.23,26.05 L4.15,25.49 L5.05,24.98 L5.78,24.48 L6.22,23.96 L6.34,23.40 L6.12,22.75 L5.64,22.01 L5.01,21.19 L4.37,20.32 L3.86,19.45 L3.62,18.64 L3.70,17.94 L4.14,17.38 L4.89,16.98 L5.86,16.72 L6.93,16.56 L7.95,16.43 L8.81,16.24 L9.43,15.94 L9.75,15.46 L9.80,14.77 L9.63,13.91 L9.36,12.91 L9.10,11.86 L8.97,10.87 L9.05,10.02 L9.40,9.40 L10.02,9.05 L10.87,8.97 L11.86,9.10 L12.91,9.36 L13.91,9.63 L14.77,9.80 L15.46,9.75 L15.94,9.43 L16.24,8.81 L16.42,7.95 L16.56,6.93 L16.72,5.86 L16.98,4.89 L17.38,4.14 L17.94,3.70 L18.64,3.62 L19.45,3.86 L20.32,4.37 L21.19,5.01 L22.01,5.64 L22.75,6.12 L23.40,6.34 L23.96,6.22 L24.48,5.78 L24.98,5.05 L25.49,4.15 L26.05,3.23 L26.66,2.43 L27.32,1.89 L28.00,1.70 L28.68,1.89 L29.34,2.43 L29.95,3.23 L30.51,4.15 L31.02,5.05 L31.52,5.78 L32.04,6.22 L32.60,6.34 L33.25,6.12 L33.99,5.64 L34.81,5.01 L35.68,4.37 L36.55,3.86 L37.36,3.62 L38.06,3.70 L38.62,4.14 L39.02,4.89 L39.28,5.86 L39.44,6.93 L39.58,7.95 L39.76,8.81 L40.06,9.43 L40.54,9.75 L41.23,9.80 L42.09,9.63 L43.09,9.36 L44.14,9.10 L45.13,8.97 L45.98,9.05 L46.60,9.40 L46.95,10.02 L47.03,10.87 L46.90,11.86 L46.64,12.91 L46.37,13.91 L46.20,14.77 L46.25,15.46 L46.57,15.94 L47.19,16.24 L48.05,16.43 L49.07,16.56 L50.14,16.72 L51.11,16.98 L51.86,17.38 L52.30,17.94 L52.38,18.64 L52.14,19.45 L51.63,20.32 L50.99,21.19 L50.36,22.01 L49.88,22.75 L49.66,23.40 L49.78,23.96 L50.22,24.48 L50.95,24.98 L51.85,25.49 L52.77,26.05 L53.57,26.66 L54.11,27.32 Z" transform="translate(1.2 1.6)" fill="var(--hue-ink)" opacity=".42"/><path d="M54.30,28.00 L54.11,28.68 L53.57,29.34 L52.77,29.95 L51.85,30.51 L50.95,31.02 L50.22,31.52 L49.78,32.04 L49.66,32.60 L49.88,33.25 L50.36,33.99 L50.99,34.81 L51.63,35.68 L52.14,36.55 L52.38,37.36 L52.30,38.06 L51.86,38.62 L51.11,39.02 L50.14,39.28 L49.07,39.44 L48.05,39.58 L47.19,39.76 L46.57,40.06 L46.25,40.54 L46.20,41.23 L46.37,42.09 L46.64,43.09 L46.90,44.14 L47.03,45.13 L46.95,45.98 L46.60,46.60 L45.98,46.95 L45.13,47.03 L44.14,46.90 L43.09,46.64 L42.09,46.37 L41.23,46.20 L40.54,46.25 L40.06,46.57 L39.76,47.19 L39.58,48.05 L39.44,49.07 L39.28,50.14 L39.02,51.11 L38.62,51.86 L38.06,52.30 L37.36,52.38 L36.55,52.14 L35.68,51.63 L34.81,50.99 L33.99,50.36 L33.25,49.88 L32.60,49.66 L32.04,49.78 L31.52,50.22 L31.02,50.95 L30.51,51.85 L29.95,52.77 L29.34,53.57 L28.68,54.11 L28.00,54.30 L27.32,54.11 L26.66,53.57 L26.05,52.77 L25.49,51.85 L24.98,50.95 L24.48,50.22 L23.96,49.78 L23.40,49.66 L22.75,49.88 L22.01,50.36 L21.19,50.99 L20.32,51.63 L19.45,52.14 L18.64,52.38 L17.94,52.30 L17.38,51.86 L16.98,51.11 L16.72,50.14 L16.56,49.07 L16.43,48.05 L16.24,47.19 L15.94,46.57 L15.46,46.25 L14.77,46.20 L13.91,46.37 L12.91,46.64 L11.86,46.90 L10.87,47.03 L10.02,46.95 L9.40,46.60 L9.05,45.98 L8.97,45.13 L9.10,44.14 L9.36,43.09 L9.63,42.09 L9.80,41.23 L9.75,40.54 L9.43,40.06 L8.81,39.76 L7.95,39.58 L6.93,39.44 L5.86,39.28 L4.89,39.02 L4.14,38.62 L3.70,38.06 L3.62,37.36 L3.86,36.55 L4.37,35.68 L5.01,34.81 L5.64,33.99 L6.12,33.25 L6.34,32.60 L6.22,32.04 L5.78,31.52 L5.05,31.02 L4.15,30.51 L3.23,29.95 L2.43,29.34 L1.89,28.68 L1.70,28.00 L1.89,27.32 L2.43,26.66 L3.23,26.05 L4.15,25.49 L5.05,24.98 L5.78,24.48 L6.22,23.96 L6.34,23.40 L6.12,22.75 L5.64,22.01 L5.01,21.19 L4.37,20.32 L3.86,19.45 L3.62,18.64 L3.70,17.94 L4.14,17.38 L4.89,16.98 L5.86,16.72 L6.93,16.56 L7.95,16.43 L8.81,16.24 L9.43,15.94 L9.75,15.46 L9.80,14.77 L9.63,13.91 L9.36,12.91 L9.10,11.86 L8.97,10.87 L9.05,10.02 L9.40,9.40 L10.02,9.05 L10.87,8.97 L11.86,9.10 L12.91,9.36 L13.91,9.63 L14.77,9.80 L15.46,9.75 L15.94,9.43 L16.24,8.81 L16.42,7.95 L16.56,6.93 L16.72,5.86 L16.98,4.89 L17.38,4.14 L17.94,3.70 L18.64,3.62 L19.45,3.86 L20.32,4.37 L21.19,5.01 L22.01,5.64 L22.75,6.12 L23.40,6.34 L23.96,6.22 L24.48,5.78 L24.98,5.05 L25.49,4.15 L26.05,3.23 L26.66,2.43 L27.32,1.89 L28.00,1.70 L28.68,1.89 L29.34,2.43 L29.95,3.23 L30.51,4.15 L31.02,5.05 L31.52,5.78 L32.04,6.22 L32.60,6.34 L33.25,6.12 L33.99,5.64 L34.81,5.01 L35.68,4.37 L36.55,3.86 L37.36,3.62 L38.06,3.70 L38.62,4.14 L39.02,4.89 L39.28,5.86 L39.44,6.93 L39.58,7.95 L39.76,8.81 L40.06,9.43 L40.54,9.75 L41.23,9.80 L42.09,9.63 L43.09,9.36 L44.14,9.10 L45.13,8.97 L45.98,9.05 L46.60,9.40 L46.95,10.02 L47.03,10.87 L46.90,11.86 L46.64,12.91 L46.37,13.91 L46.20,14.77 L46.25,15.46 L46.57,15.94 L47.19,16.24 L48.05,16.43 L49.07,16.56 L50.14,16.72 L51.11,16.98 L51.86,17.38 L52.30,17.94 L52.38,18.64 L52.14,19.45 L51.63,20.32 L50.99,21.19 L50.36,22.01 L49.88,22.75 L49.66,23.40 L49.78,23.96 L50.22,24.48 L50.95,24.98 L51.85,25.49 L52.77,26.05 L53.57,26.66 L54.11,27.32 Z" fill="var(--hue-dark)"/><path d="M9.40,46.60 L9.05,45.98 L8.97,45.13 L9.10,44.14 L9.36,43.09 L9.63,42.09 L9.80,41.23 L9.75,40.54 L9.43,40.06 L8.81,39.76 L7.95,39.58 L6.93,39.44 L5.86,39.28 L4.89,39.02 L4.14,38.62 L3.70,38.06 L3.62,37.36 L3.86,36.55 L4.37,35.68 L5.01,34.81 L5.64,33.99 L6.12,33.25 L6.34,32.60 L6.22,32.04 L5.78,31.52 L5.05,31.02 L4.15,30.51 L3.23,29.95 L2.43,29.34 L1.89,28.68 L1.70,28.00 L1.89,27.32 L2.43,26.66 L3.23,26.05 L4.15,25.49 L5.05,24.98 L5.78,24.48 L6.22,23.96 L6.34,23.40 L6.12,22.75 L5.64,22.01 L5.01,21.19 L4.37,20.32 L3.86,19.45 L3.62,18.64 L3.70,17.94 L4.14,17.38 L4.89,16.98 L5.86,16.72 L6.93,16.56 L7.95,16.43 L8.81,16.24 L9.43,15.94 L9.75,15.46 L9.80,14.77 L9.63,13.91 L9.36,12.91 L9.10,11.86 L8.97,10.87 L9.05,10.02 L9.40,9.40 L10.02,9.05 L10.87,8.97 L11.86,9.10 L12.91,9.36 L13.91,9.63 L14.77,9.80 L15.46,9.75 L15.94,9.43 L16.24,8.81 L16.42,7.95 L16.56,6.93 L16.72,5.86 L16.98,4.89 L17.38,4.14 L17.94,3.70 L18.64,3.62 L19.45,3.86 L20.32,4.37 L21.19,5.01 L22.01,5.64 L22.75,6.12 L23.40,6.34 L23.96,6.22 L24.48,5.78 L24.98,5.05 L25.49,4.15 L26.05,3.23 L26.66,2.43 L27.32,1.89 L28.00,1.70 L28.68,1.89 L29.34,2.43 L29.95,3.23 L30.51,4.15 L31.02,5.05 L31.52,5.78 L32.04,6.22 L32.60,6.34 L33.25,6.12 L33.99,5.64 L34.81,5.01 L35.68,4.37 L36.55,3.86 L37.36,3.62 L38.06,3.70 L38.62,4.14 L39.02,4.89 L39.28,5.86 L39.44,6.93 L39.58,7.95 L39.76,8.81 L40.06,9.43 L40.54,9.75 L41.23,9.80 L42.09,9.63 L43.09,9.36 L44.14,9.10 L45.13,8.97 L45.98,9.05 L46.60,9.40 Z" fill="var(--hue-mid)"/><circle cx="28" cy="28" r="19.4" fill="none" stroke="var(--hue-light)" stroke-width="1.7"/><circle cx="28" cy="28" r="16.4" fill="var(--card-paper-light)"/></svg><img class="mark" src="ui/logo-icon.png" alt=""></div>
@@ -944,10 +1017,21 @@ function corpCardHTML(c,ci,still){const s=slug(c.n),st=Object.entries(c.st||{}),
 <div class="start"><div class="figs">${figs}</div><p class="start-line">${cNum(line)}</p></div>
 <section class="effect"><div class="ribbon">EFFECT</div><div class="stage"><div class="dgm">${CDIAG[s]?CDIAG[s]():''}</div></div><div class="effect-wrap"><p class="effect-line">(${cNum(c.d)})</p></div></section>
 <div class="orn"><i></i><b></b><i></i></div><p class="lore">${esc(CORP_LORE[s]||'')}</p></article>`}
-const CORP_LORE={'greenline-reclamation':'Started with one truck and a thousand saplings. Still plants first and files the paperwork later.','ashfall-recycling':'Nothing is rubble if somebody will pay for it. Ashfall pays, then sorts the pile by weight.','vireo-seed-bank':'Their vault outlived the city above it. Small seeds keep long promises, and Vireo keeps the receipts.','meridian-fusion':'Bottled sunlight, sold by the hour. The grid hums the same tune it did before the fall.','delta-rewilding-trust':'Water remembers where it used to go. The Trust just stops digging in its way.','cairn-heavy-industries':'They stack what the old world dropped. Every settlement starts with one heavy stone.'};
+const CORP_LORE={'nomad-caravan-union':'Their wagons never stop for long. News, seeds and spare parts all travel at the speed of a mule.',
+ 'tinker-collective':'One shared workbench, forty pairs of hands. If it hums, clicks or leaks, somebody here can fix it.',
+ 'northstar-cartographers':'The old maps lie about everything. Northstar draws new ones, and sells the best routes first.',
+ 'rubblewright-salvors':'Every ruin is a locked chest. The Salvors just bring bigger hammers than everyone else.',
+ 'cinderbloom-kilns':'Their kilns never cool. Spent cells go in hot, and twice the char comes out.',
+ 'hollowfen-rangers':'They count wolves the way bankers count coins. Every open path is money well spent.',
+ 'cairn-heavy-industries':'They stack what the old world dropped. Every settlement starts with one heavy stone.',
+ 'lumen-institute':'Half school, half greenhouse, all questions. The lights in the Institute never go out.',
+ 'ironvale-foundries':'Ironvale weighs scrap like gold. Their furnaces turn a rusted car into a week of wages.',
+ 'kessel-engineworks':'Nothing leaves Kessel the way it came in. Every rebuilt engine coughs up parts for the next one.',
+ 'loamwright-farms':'Good soil feeds itself. Loamwright just keeps a sack ready for what it gives back.',
+ 'brightwater-grid':'Brightwater keeps the lights on and the batteries full. Every new line brings a crate of spare cells.'};
 
 document.addEventListener('pointerdown',au,{once:true});
-lobby();
+{const c=urlCode();lobby();rejoin(c)} // read the room code from the address before lobby() clears it
 
 /* ---------- TILE ART: image files in tile-art/ (loaded now, so the board never flashes empty) ---------- */
 const TILEDATA={blank:'tile-art/blank.png',forest:'tile-art/forest.png',power:'tile-art/power.png',corridor:'tile-art/corridor.png',ruin:'tile-art/ruin.png',wetland:'tile-art/wetland.png',settlement:'tile-art/settlement.png'};
