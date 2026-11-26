@@ -1,7 +1,7 @@
 // SECOND SPRING - local demo (no server). Open with VS Code "Live Server".
 const $=s=>document.querySelector(s),NS='http://www.w3.org/2000/svg';
 const R={cr:'Credits',sa:'Salvage',re:'Rare mineral',se:'Seeds',fc:'Fusion Cells',bc:'Biochar'};
-const LN={f:'Forest',w:'Wetland',s:'Settlement',p:'Fusion Plant',c:'Wildlife Corridor',r:'Clear a Ruin',x:'Ruin'};
+const LN={f:'Forest',w:'Wetland',s:'Settlement',p:'Fusion Plant',c:'Wildlife Corridor',r:'Clear a Ruin',x:'Ruin',u:'Remove your Forest',z:'Fusion Suburb Settlement'};
 const PC=['#4be07a','#ef5a52','#f0c63c','#4f8cff'];
 const SYMS=['<polygon points="0,-7.3 7.3,0 0,7.3 -7.3,0" fill="#39d56b"/>','<polygon points="0,-7 7.5,6 -7.5,6" fill="#f34f52"/>','<circle r="7.2" fill="#f5d343"/>','<rect x="-6.8" y="-6.8" width="13.6" height="13.6" rx="1.4" fill="#4299ff"/>'];
 const symG=i=>`<g stroke="#101a14" stroke-width="1.5" stroke-linejoin="round">${SYMS[i]}</g>`,symHTML=(i,px)=>`<svg viewBox="-9 -9 18 18" width="${px}" height="${px}">${symG(i)}</svg>`;
@@ -39,7 +39,7 @@ const SYN={
 /* CARDS: one card per line:  name | cost | type | synergies | requirement | effects | flavour text
    type: B Build (stays in play), A Active (stays in play: an action, a trigger or a discount), E Event (played once)
    synergies: 0-3 keys from SYN above, separated by spaces
-   requirement (optional): co>=8, co<=10 (CO2 track), so>=4, so<=7 (Soil %), we>=2 (Wetlands), syn.science>=3 (Science cards you have played), own.p (you own a Fusion Plant)
+   requirement (optional): co>=8, co<=10 (CO2 track), so>=4, so<=7 (Soil %), we>=2 (Wetlands), syn.science>=3 (Science cards you have played), own.p (you own a Fusion Plant), own.p2 (you own 2), own.f (you own a Forest)
    effects, separated by spaces:
      Pse2 production (+2 Seeds every generation)   Gcr3 gain now (Gcr1/t = 1 Credit per tile you own)   Tco Tso Twe track step
      Lf Lw Ls Lp Lc place a Forest / Wetland / Settlement / Fusion Plant / Wildlife Corridor   Lr clear a ruin   Lx place a Ruin on an empty hex (no owner)   D2 draw cards   V2 victory points (V-1 = minus one)
@@ -47,19 +47,25 @@ const SYN={
      A{sa2:Gcr5} action once per generation (pay left, get right; tok1 = add a token to this card)
      W{play.industry:Gcr2} trigger. play.<synergy> or play.E (you play one), place.f (you place one), any.p (anyone places one), anytrack.co / anytrack.so (anyone lowers CO2 / raises Soil)
      K{industry:2} your cards with that synergy cost less (K{all:1} = every card)
-     VS{syn.science:2} game end: 1 VP per 2 Science cards played (VS{f:3}: per 3 Forests you own)   VT2 game end: 1 VP per 2 tokens on this card */
+     VS{syn.science:2} game end: 1 VP per 2 Science cards played (VS{f:3}: per 3 Forests you own)   VT2 game end: 1 VP per 2 tokens on this card
+     VS2{p:1} = 2 VP per Fusion Plant (a number after VS multiplies)   VC game end: 1 VP per full track (a full Wetlands track counts 2)
+     Lz place a Settlement that also scores 2 VP per touching Fusion Plant   Uf remove one of your Forests
+     Hfc your Fusion Cells don't turn into Biochar   Mfc3 gain 3x your Fusion Cell production   Bfc every rival loses all Fusion Cells, you gain half
+     Iw4fc each generation +1 Fusion Cell per Wetland on the board (max 4)   Sw take the next card from the deck that places a Wetland
+     Y2bc3 discard up to 2 cards from your hand, 3 Biochar each   Fscience.cr2 draw 1: keep it if it is Science, otherwise discard it and gain 2 Cr
+     W{rival.science:D1} trigger when a RIVAL plays a Science card */
 const CARDS=`Ruin Clearance Crew|6|E|recycling||Lr Gsa3|Somebody has to move the rubble.
 Seed Vault Opening|10|E|soil||Gse5 Tso|Frozen for decades, hungry for sunlight.
-Tidal Fusion Reactor|14|B|power fusioncell||Pfc3|The moon does the heavy lifting.
+Tidal Fusion Reactor|14|B|power fusioncell||Pfc1 Iw4fc|The moon does the heavy lifting.
 Mycorrhizal Network|12|B|soil||Pse2|The forest has had wi-fi all along.
 Carbon Capture Towers|20|A|engine air||A{fc6:Tco}|Skyscrapers that inhale for a living.
-Scrapyard Foundry|9|B|industry recycling||Psa2|One era's junk is the next one's steel.
-Rare Earth Reclaimers|14|B|engine recycling||Pre2|Old gadgets, new metals, no mining.
+Scrapyard Foundry|12|B|industry recycling||Psa2|One era's junk is the next one's steel.
+Rare Earth Reclaimers|18|B|engine recycling||Pre2|Old gadgets, new metals, no mining.
 Floodplain Restoration|15|B|wildlife soil||Lw Pbc1|Let the river remember where it lived.
 Pollinator Swarm|8|E|wildlife||Gse4 D1|Tiny wings, enormous plans.
 Biochar Kilns|8|B|industry soil||Pbc2 Pfc-1|Burn slow, bury carbon, grow better.
 Nuclear Winter Reversal|24|E|science air||Tco Tco|The long thaw begins today.
-Greenbelt Charter|18|B|settlement||Ls Pcr2 V1|A promise written in grass.
+Greenbelt Charter|22|B|settlement||Ls Pcr2 V1|A promise written in grass.
 Prairie Rewilding Programme|13|B|wildlife air||Lf Pse1|The bison are on their way back.
 Salvage Auctions|5|E|recycling||Gcr6 Gsa2|Going once, going twice, sold for scrap.
 Aquifer Recharge|17|B|science||Lw Pcr1|Patience, drop by drop.
@@ -68,15 +74,15 @@ Enclave Exchange|7|A|industry||A{sa1:Gcr3}|One survivor's junk is another's curr
 Soil Microbiome Lab|16|A|science soil||A{bc6:Tso}|A billion tiny employees, zero salaries.
 Rewilding Drone Fleet|12|A|engine wildlife||A{cr3:Gse2}|Seeds from above, no questions asked.
 Old World Archive Dig|6|E|recycling science||D2 Gre1|Turns out they did keep receipts.
-Wildlife Corridor Pact|9|B|wildlife||Lc Gcr2|Fences down, paws welcome.
+Wildlife Corridor Pact|15|B|wildlife||Lc Gcr2|Fences down, paws welcome.
 Fusion Plant Prototype|13|B|power engine||Lp Pre1|It works. Mostly.
 Peatland Revival|20|B|soil air wildlife||Lw Pbc1 V2|The bog is back, and it brought friends.
-Sealed Enclave Charter|16|B|settlement||Ls Pcr2|Closed doors, open ledgers.
+Sealed Enclave Charter|20|B|settlement||Ls Pcr2|Closed doors, open ledgers.
 Orchard Terraces|10|B|soil||Pse1 Pcr1 V1|Apples grow where the asphalt cracked.
 Terraformer Veterans|7|B|||Pcr1 V1|They have seen worse than this swamp.
 Scrap Metal Rush|3|E|recycling||Gsa5|Finders keepers, weighers payers.
 Mangrove Barrier|15|B|air||Lw Gse3|Roots against the rising tide.
-High Density Housing|19|B|settlement industry||Ls Pcr1 V2|Cozy is a matter of perspective.
+High Density Housing|25|B|settlement industry||Ls Pcr1 V2|Cozy is a matter of perspective.
 Atmospheric Filtration Grid|22|B|engine air||Pcr2 V2|Breathe in. Thank the machine.
 Glacier Regrowth Project|28|E|science soil||Tso Tso Lw|Slow ice, slower paperwork.
 Fusion Cell Surplus|4|E|fusioncell||Gfc6|Overstocked and slightly warm.
@@ -85,7 +91,7 @@ Heavy Machinery Depot|12|B|industry engine recycling||Psa1 Pre1|Beeps loudly, mo
 Earth Day Festival|9|E|||Gcr1/t|Every tile a reason to celebrate.
 Hydroponic Skyfarm|14|B|engine||Pse3|Lettuce, but make it vertical.
 Genetic Archive Reboot|26|B|science soil||Pse2 Tso V3|Restore from backup. Fingers crossed.
-Ghost City Rebuild|17|B|recycling settlement||Lr Ls Pcr1|Cozy is a matter of time.
+Ghost City Rebuild|21|B|recycling settlement||Lr Ls Pcr1|Cozy is a matter of time.
 Weather Control Network|28|E|science engine air||Lw Gse5 Gbc4|Rain on request, sun on Sundays.
 The Great Greening|35|B|soil air||Tco Tso Lw V6|And then, one morning, everything was green.
 Salvage Yard Cranes|8|B|industry||Psa1 Gsa2|Old cranes, new purpose.
@@ -93,19 +99,19 @@ Steel Reclamation Mill|15|B|industry||Psa2 V1|Melted down and built back up.
 Rolling Mill Restart|13|B|industry||Psa1 Pcr1|It groaned, then it rolled.
 Assembly Line Reborn|18|B|industry|syn.industry>=2|Psa1 Pcr2 V1|The conveyor belt remembers.
 Workshop Cooperative|6|B|industry||Pcr1 Gsa1|Shared tools, shared profits.
-Rivet Foundry|10|B|industry||Psa2|Hot iron, steady hands.
+Rivet Foundry|10|B|industry||Psa1 Gsa4|Hot iron, steady hands.
 Industrial Commons|26|B|industry|syn.industry>=4|Psa2 Pcr2 V2|A factory owned by everyone.
-Machine Shop Annex|5|B|industry||Psa1|One lathe, big ambitions.
+Machine Shop Annex|7|B|industry||Psa1|One lathe, big ambitions.
 Freight Depot Revival|11|B|industry||Pcr2|The trains still know the way.
 Tool and Die Works|9|B|industry||Pcr1 D1|Precision, salvaged.
-Forge Quarter|20|B|industry||Psa3 V1|A whole district that smells of hot metal.
+Forge Quarter|22|B|industry|own.p|Psa3 V1|A whole district that smells of hot metal.
 Rail Yard Salvage|14|B|industry recycling||Psa1 Gsa4 Pcr1|Ten thousand tonnes of rusty opportunity.
 Cement Kiln Restart|12|B|industry|co>=8|Psa2 Gcr2|Dirty, cheap and only possible early on.
 Coal Bunker Conversion|5|B|industry||Pfc2 V-1|Not proud of it, but it runs.
 Smokestack Refit|16|B|industry air||Psa1 Tco|Same chimney, cleaner breath.
 Glassworks Kilns|13|B|industry||Pbc1 Pcr1 Gsa2|Sand in, windows out.
 Union Hall|10|B|industry|syn.industry>=3|Pcr2 V1|Solidarity, with coffee.
-Mega-Press Plant|33|B|industry engine||Psa3 Pre1 V1|It presses whole cars flat. Politely.
+Mega-Press Plant|33|B|industry engine|own.p|Psa3 Pre1 V1|It presses whole cars flat. Politely.
 Charcoal Retort Yard|16|B|industry soil||Pbc3|Wood in, carbon underground.
 Scrap-Fed Reactor|12|B|industry fusioncell||Pfc3 Pcr-1|Feeds on yesterday.
 Concrete Crushers|9|B|industry recycling||Psa1 Gsa3|Rubble in, gravel out.
@@ -113,31 +119,31 @@ Geothermal Wellhead|16|B|power industry||Lp Pfc1|The planet's own boiler room.
 Microgrid Substation|12|B|power industry|own.p|Pcr2 Pfc1|Small grid, big reliability.
 Grid Restoration Crews|11|B|power industry|own.p|Pcr1 Pfc1 Gsa2|Climbing poles since the collapse.
 Turbine Repair Line|19|B|industry engine||Pre2 Pcr1|Every blade balanced by hand.
-Magnet Recovery Works|14|B|industry engine||Pre2|Pulling metals out of motors.
-Precision Lathes|22|B|industry engine|syn.engine>=2|Pre2 V1|Tolerances finer than a hair.
-Excavator Fleet|18|B|industry engine||Psa2 Pre1|Big yellow optimism.
+Magnet Recovery Works|17|B|engine||Pre2|Pulling metals out of motors.
+Precision Lathes|22|B|industry engine|own.p|Pre2 V1|Tolerances finer than a hair.
+Excavator Fleet|18|B|industry engine|own.p|Psa2 Pre1|Big yellow optimism.
 Gearbox Rebuilders|12|B|industry engine||Pre1 Gsa3|Teeth, oil and patience.
-Automated Sorting Line|26|B|industry engine recycling||Pre2 D1|The robots know what goes where.
+Automated Sorting Line|26|B|industry engine recycling|own.p|Pre2 D1|The robots know what goes where.
 Exoskeleton Workshop|16|B|industry engine||Pre2 Gcr2|Lift a beam, save a back.
 Landfill Mining Rig|15|B|industry engine recycling||Psa1 Pre1 Gsa2|The richest mine is the old dump.
 Electric Tractor Pool|15|B|engine soil||Pse2 Pcr1|Quiet fields, loud harvests.
-Rewound Motors|10|B|engine||Pre1 Pcr1|New copper, old hum.
+Rewound Motors|11|B|engine||Pcr2|New copper, old hum.
 Battery Swap Network|18|B|engine fusioncell||Pfc2 Pre1|Swap, click, drive.
-Hover Seeder Drones|24|B|engine soil|so<=8|Pse2 Tso|They sow where boots can't go.
+Hover Seeder Drones|24|B|engine soil|so<=11|Pse2 Tso|They sow where boots can't go.
 Wind Pump Array|17|B|engine power||Lp Pcr1|Water up, power out.
 Hydrogen Fuel Plant|22|B|engine power|own.p|Pfc2 Pre1 V1|Split water, store sunshine.
 Cable Car Lines|12|B|engine||Pcr2|“Roads? Where we’re going, we don’t need roads.”
 Orbital Mirror Fragments|45|B|engine air|co<=8|Tco Tco Pre1 V2|A broken satellite, turned into a sunshade.
-Remote Sensing Station|11|B|engine science||D2 Pre1|Seeing the whole valley at once.
+Remote Sensing Station|12|B|engine science||Sw D1|Seeing the whole valley at once.
 Seismic Monitoring Grid|13|B|engine science||Pre1 D1|Listening to the ground breathe.
 Copper Wire Harvest|14|B|engine recycling||Gre3 Pre1|Kilometres of it, in every wall.
 Seed Genome Library|16|B|science soil||Pse2 D1|Every seed indexed, every seed loved.
-University Ruins Reopened|19|B|science recycling||Lr D2 Pcr1|Lectures resume in Hall B. Mind the hole.
-Climate Observatory|14|B|science air||D1 Pcr1 V1|Measuring the sky's recovery.
+University Ruins Reopened|15|B|science recycling||Lr D2 Pcr1|Lectures resume in Hall B. Mind the hole.
+Climate Observatory|14|B|science air||Pcr1 VC|Measuring the sky's recovery.
 Soil Chemistry Institute|22|B|science soil|syn.science>=2|Tso Pbc1 V1|Dirt, studied seriously.
 Botanical Archive|9|B|science||D2 V1|Pressed flowers, precise notes.
 Fusion Research Campus|26|B|science fusioncell power|syn.science>=2|Pfc3 V1|Clever people, very bright lights.
-Grand Ecology Academy|28|B|science|syn.science>=4|D2 VS{syn.science:2}|Where every lesson is outdoors.
+Grand Ecology Academy|28|B|science|syn.science>=4|D2 VS{syn.science:2} V1|Where every lesson is outdoors.
 Atmospheric Chemistry Lab|20|B|science air|syn.science>=3|Tco D1 V1|Counting molecules, one breath at a time.
 Hydrology Survey|10|B|science|we>=2|D2 Pcr1|Mapping every stream back to its source.
 Mycology Research Hut|8|B|science soil||Pse1 D1|Mushrooms are smarter than they look.
@@ -158,22 +164,22 @@ Pocket Forests|12|B|air||Lf Gse2|A forest the size of a tennis court.
 Urban Canopy Initiative|16|B|air|co<=10|Lf Pcr1|Shade on every street.
 Old-Growth Reserve|26|B|air|co<=6|Lf VS{f:3}|Some trees are older than the collapse.
 Reed Bed Filters|13|B|air||Lw Gcr2|Plants that clean the water and the air.
-Badger Crossing|11|B|wildlife||Lc Gse2|Tunnels under the road, finally.
-Elk Migration Route|17|B|wildlife air|co<=9|Lc V1|The herds remember the old paths.
-Riverside Hamlet|14|B|settlement||Ls Pse1|Twelve houses and a ferry.
-Rail Town Revival|20|B|settlement industry||Ls Pcr2|The station clock works again.
-Solar Village|18|B|settlement power|own.p|Ls Pcr2|Every roof a power plant.
-Scavenger Outpost|9|B|settlement recycling||Ls Gsa3|Built from what was lying around.
-Science Commune|19|B|settlement science||Ls D2 V1|Peer review at the dinner table.
-Eco-Arcology|40|B|settlement engine air|co<=7|Ls Pcr3 V3|A city that breathes with the forest.
-Floating Harbor Town|22|B|settlement|we>=4|Ls Pcr2 V1|Houses that rise with the water.
-Great Smelting Complex|55|B|industry engine|syn.industry>=4|Psa4 Pre2 V3|The biggest furnace in the valley, relit.
+Badger Crossing|15|B|wildlife||Lc Gse2|Tunnels under the road, finally.
+Elk Migration Route|20|B|wildlife air|co<=9|Lc V1|The herds remember the old paths.
+Riverside Hamlet|18|B|settlement||Ls Pse1|Twelve houses and a ferry.
+Rail Town Revival|26|B|settlement industry||Ls Pcr2|The station clock works again.
+Solar Village|21|B|settlement power|own.p|Ls Pcr2|Every roof a power plant.
+Scavenger Outpost|15|B|settlement recycling||Ls Gsa3|Built from what was lying around.
+Science Commune|23|B|settlement science||Ls D2 V1|Peer review at the dinner table.
+Eco-Arcology|42|B|settlement engine air|co<=7|Ls Pcr3 V3|A city that breathes with the forest.
+Floating Harbor Town|25|B|settlement|we>=4|Ls Pcr2 V1|Houses that rise with the water.
+Great Smelting Complex|21|B|industry|own.p2|Psa4 V3|The biggest furnace in the valley, relit.
 Valley Reforestation Act|50|B|soil air|co<=10|Lf Lf Tso V2|Two forests, one law, a whole valley of shade.
 Continental Seed Network|67|B|soil science|syn.science>=3|Pse4 Tso Tso V4|Every valley sends its seeds to every other.
 Scrap Harbour Shipyard|23|B|industry recycling||Psa2 Gsa4 Pcr1|Hulls cut up, hulls welded back.
 Sawmill Cooperative|9|B|industry soil||Pse1 Pbc1|Only fallen trees, by rule.
 Bicycle Factory|12|B|industry air||Pcr2 V1|The quietest traffic jam in history.
-Blast Furnace Restart|8|B|industry|co>=10|Psa2 V-1|Loud, filthy and very productive.
+Blast Furnace Restart|8|B|industry|co>=10|Psa1 Gsa4 V-1|Loud, filthy and very productive.
 River Barge Fleet|16|B|industry engine|we>=2|Pcr2 Pre1|The rivers are roads again.
 Pioneer Birch Stands|10|B|||Lf|Birches always arrive first.
 Reforestation Bonds|18|B|||Lf Pcr2|Invest in shade.
@@ -182,17 +188,17 @@ Community Granary|7|B|||Pse1 Gcr2|Nobody goes hungry this winter.
 Salvage Brokerage|10|A|industry||A{sa2:Gcr5}|Scrap bought low, sold high.
 Night Shift Foundry|16|A|industry||A{cr4:Gsa3}|The furnace never sleeps.
 Scrap Recycling Contracts|8|A|industry recycling||W{play.recycling:Gsa2}|Paid by the tonne.
-Industrial Purchasing Office|8|A|industry||K{industry:2}|Bulk orders, bulk discounts.
+Industrial Purchasing Office|9|A|industry||K{industry:1}|Bulk orders, bulk discounts.
 Foreman's Guild|12|A|industry|syn.industry>=3|W{play.industry:Gcr2}|Every new line needs a foreman.
 Robotic Welders|18|A|industry engine||A{re1:Gsa3}|Sparks without sweat.
 Smelter Co-op|11|A|industry||A{sa3:Gre2,Gcr1}|Turning scrap into something rare.
-Heavy Industry Lobby|10|A|industry|co>=7|K{industry:3} V-1|Friends in high places, smoke in the air.
+Heavy Industry Lobby|10|A|industry|co>=7|K{industry:2} V-1|Friends in high places, smoke in the air.
 Carbon Offset Exchange|7|A|industry air||W{anytrack.co:Gcr1}|Every breath of clean air pays a dividend.
-Conveyor Logistics Hub|13|A|industry engine||K{industry:1} K{engine:1} Gsa2|Everything arrives on time. Eventually.
+Conveyor Logistics Hub|15|A|industry engine||K{industry:1} K{engine:1}|Everything arrives on time. Eventually.
 Steelworks Union|17|A|industry|syn.industry>=4|W{play.industry:Gsa1,Gcr1}|Strong arms, stronger contracts.
 Rail Museum|10|A|industry recycling||A{sa2:tok1} VT2|Every engine restored is a visitor magnet.
 Plant Maintenance Guild|10|A|power industry||W{any.p:Gsa2}|Every new plant needs a mechanic.
-Trading Post Settlement|17|A|settlement industry||Ls A{sa1:Gcr3}|“Greed, for lack of a better word, is good.”
+Trading Post Settlement|24|A|settlement industry||Ls A{sa1:Gcr3}|“Greed, for lack of a better word, is good.”
 Autonomous Haulers|16|A|engine industry||A{re1:Gsa2,Gcr1}|They drive themselves to the scrapyard.
 Recycled Rail Network|26|A|industry engine|syn.industry>=2|A{:Gsa2} Pcr1|Old tracks, new freight.
 Tool Lending Depot|9|A|industry||A{cr1:Gsa1} Gsa2|Return it by Friday, please.
@@ -200,39 +206,39 @@ Heavy Haul Contractors|16|A|industry||A{sa3:Gcr8}|If it fits on a truck, it move
 Furnace Heat Exchange|14|A|industry fusioncell||A{sa2:Gfc3}|Waste heat, captured.
 Scrap Metal Sculptors|12|A|industry recycling||A{sa4:tok1} VT1|Art made from the old world's bones.
 Industrial Revival Fund|18|A|industry|syn.industry>=5|W{play.industry:D1}|“Was all this legal? Absolutely not.”
-Drone Maintenance Bay|9|A|engine||K{engine:2}|Spare rotors on every shelf.
+Drone Maintenance Bay|11|A|engine||K{engine:1}|Spare rotors on every shelf.
 Rare Metal Exchange|9|A|engine||A{re1:Gcr4}|“Nobody knows if a stock is going to go up, down, sideways or in circles.”
 Maglev Freight Line|16|A|engine|syn.engine>=2|W{play.engine:Gcr3}|Floating freight, silent and fast.
 Mechanic Network|14|A|engine||A{sa3:Gre3}|Ask around. Someone has the part.
 Satellite Uplink|14|A|engine science||W{play.science:Gre1}|The old satellites still answer.
 Electric Bus Depot|9|A|engine air||W{any.s:Gcr3}|Every new town gets a bus stop.
-Laboratory Robotics|14|A|science engine||K{science:2} K{engine:1}|Pipettes that never get tired.
+Laboratory Robotics|12|A|science||K{science:2}|Pipettes that never get tired.
 Carbon Vault|16|A|air engine||A{bc2:tok1} VT1|Carbon locked away for a thousand years.
 Isotope Separators|15|A|fusioncell engine||A{fc3:Gre2}|Sorting atoms by weight.
 Load Balancing Center|20|A|power engine|own.p|A{:Gfc2}|Not a single watt wasted.
 Engine Rebuild Bay|20|A|engine|syn.engine>=3|A{re3:tok1} VT1 Pre1|Every rebuilt engine is a trophy.
-Field Laboratory|22|A|science||A{:D1}|A tent, a microscope and endless questions.
-Peer Review Board|12|A|science|syn.science>=2|K{science:2}|“I’m gonna make him an offer he can’t refuse.”
+Field Laboratory|16|A|science||A{:Fscience.cr2}|A tent, a microscope and endless questions.
+Peer Review Board|10|A|science|syn.science>=2|K{science:1} W{rival.science:D1}|“I’m gonna make him an offer he can’t refuse.”
 Seed Testing Plots|11|A|science soil||W{play.soil:Gse2}|Rows and rows of careful experiments.
 Weather Station Network|14|A|science air||A{cr4:D2}|Tomorrow: clearing skies.
-Research Grants Office|18|A|science|syn.science>=3|W{play.science:Gcr3}|Funding follows curiosity.
+Research Grants Office|18|A|science|syn.science>=2|W{play.science:Gcr3}|Funding follows curiosity.
 Archive Restoration|12|A|science recycling||W{play.recycling:D1}|Every ruin hides a notebook.
-Think Tank|28|A|science|syn.science>=4|A{:D1} VS{syn.science:3}|Ideas, on tap.
-Memory Archive|10|A|science||W{play.science:tok1} VT2|Remember everything, repeat nothing.
+Think Tank|22|A|science||A{:D1} VS{syn.science:3}|Ideas, on tap.
+Memory Archive|13|A|science||W{play.science:tok1} VT2|Remember everything, repeat nothing.
 Citizen Science Network|8|A|science||W{play.science:Gcr1} D1|Thousands of volunteers with notebooks.
 Long-Term Ecology Plots|14|A|science soil|syn.science>=2|A{:tok1} VT2|The best data takes decades.
-Fusion Cell Exchange|8|A|fusioncell||A{fc2:Gcr3}|Charged cells, cash on delivery.
+Fusion Cell Exchange|8|A|fusioncell||A{fc2:Gcr4}|Charged cells, cash on delivery.
 Cold Fusion Kiln|12|A|fusioncell soil||A{fc2:Gbc4}|A kiln that runs on borrowed sunlight.
 Plasma Torch Recycler|13|A|fusioncell recycling||A{fc2:Gsa3}|Cuts through anything the old world built.
 Fusion Grid Operator|20|A|fusioncell power|own.p|A{fc3:Gcr6}|Selling power to the whole valley.
 Fusion Battery Farm|12|A|fusioncell||A{fc4:D2}|Rows of humming batteries.
-Power Broker|8|A|power||K{power:3}|Knows every plant manager by name.
-Worm Farm Cooperative|8|A|soil|so<=7|A{se1:Gbc2}|Feed the worms, feed the soil.
+Power Broker|10|A|power||K{power:2} W{any.p:Gcr3}|Knows every plant manager by name.
+Worm Farm Cooperative|8|A|soil||A{se1:Gbc2}|Feed the worms, feed the soil.
 Soil Restoration Fund|10|A|soil|so>=4|W{anytrack.so:Gcr2}|Every inch of topsoil pays back.
 Rotational Grazing|16|A|soil|so>=5|A{se6:Tso}|Move the herd, heal the ground.
 Seedling Nursery|14|A|soil||A{:tok1} VT2|A thousand saplings waiting for a home.
 Bee Hive Collective|9|A|soil||W{any.f:tok1} VT3|Every new forest means more honey.
-Wolf Return Charter|16|A|wildlife||Lc W{place.f:Gcr1}|The wolves came back, and the forests followed.
+Wolf Return Charter|20|A|wildlife||Lc W{place.f:Gcr1}|The wolves came back, and the forests followed.
 Museum of the Old World|14|A|recycling||W{play.recycling:tok1} VT1|Exhibit 1: a working toaster.
 Storyteller's Circle|5|A|||W{play.E:Gcr1}|Every event becomes a story.
 Wishing Well|4|A|||A{cr1:tok1} VT4|A coin for the future.
@@ -263,17 +269,17 @@ Rare Earth Strike|8|E|engine||Gre4|A seam of neodymium in the old quarry.
 Prototype Unveiling|12|E|engine science||Gre2 D2|It sparked, but in a good way.
 Breakthrough Paper|10|E|science|syn.science>=2|D3 V1|Published, peer-reviewed, celebrated.
 Carbon Tax Rebate|10|E|air industry|co<=10|Gcr5 V1|Clean air finally pays.
-Clean Air Day|14|E|air|co<=6|Gse8|You can see the mountains again.
-Topsoil Delivery|16|E|soil|so<=5|Tso Gse2|Fresh earth by the truckload.
+Clean Air Day|10|E|air|co<=9|Gse8|You can see the mountains again.
+Topsoil Delivery|14|E|soil|so<=9|Tso Gse2|Fresh earth by the truckload.
 Fusion Breakthrough|10|E|fusioncell science||Gfc8 D1|Stable at last.
-Grid Blackout|6|E|power|own.p|Zfc1 Gfc4|Your lights stay on. Theirs don't.
+Grid Blackout|12|E|power|own.p|Bfc|Your lights stay on. Theirs don't.
 Salvage Rights Auction|5|E|recycling||Qsa3 Gcr2|The highest bidder takes the scrapyard.
 Leftover Warhead|8|E|||Lx Gsa3|Some things the old world left behind should have stayed buried.
 Scrap Compost Digesters|9|A|recycling soil||A{sa3:Gbc3}|Rust, worms and a lot of patience.
 Scrap-for-Seeds Market|8|A|industry||A{sa3:Gse3}|Two bolts for a bag of beans.
 Rubble Haulers|12|A|industry recycling||A{sa4:Lr}|First the rubble, then the garden.
-Lynx Reintroduction|13|B|wildlife air||Lc V1|Quiet paws in the new pines.
-Beaver Dam Return|14|B|wildlife soil||Pse1 Pbc1|The best engineers never went to school.
+Lynx Reintroduction|17|B|wildlife air||Lc V1|Quiet paws in the new pines.
+Beaver Dam Return|14|B|wildlife soil||Lw Pbc1|The best engineers never went to school.
 Wildlife Census|5|E|wildlife science||D2 Gse1|Count the tracks, then count again.
 Hydro Turbine Refit|12|B|power||Pfc1 Pcr1|Old turbine, new bearings.
 Grid Tie-In Contract|6|E|power||Gfc3 Gcr2|Plug in, pay up.
@@ -282,7 +288,26 @@ Fusion Kiln Annex|13|B|fusioncell soil||Pfc1 Pbc1|The kiln never cools.
 Ash Fertiliser Trade|9|A|soil||A{bc3:Gse3}|Grey ash, green shoots.
 Terra Preta Beds|16|B|soil|so>=3|Tso Pbc1|Black earth, made by hand.
 Leaf Litter Collective|11|B|soil recycling||Pbc1 Gbc3|Every autumn is a harvest.
-Collapse Survey|5|E|recycling||Lr D1|Mark it, clear it, map it.`.split('\n').map(l=>{const[n,c,y,s,q,f,fl]=l.split('|');return{n,c:+c,y,s:s.split(' ').filter(Boolean),q,f:f.split(' ').filter(Boolean),fl}});
+Collapse Survey|5|E|recycling||Lr D1|Mark it, clear it, map it.
+Fusion Desalination Works|14|A|fusioncell||A{fc6:Lw}|Salt out, marsh in.
+Fusion Data Center|13|A|fusioncell science||A{fc5:D3}|Every answer costs a little sunshine.
+Battery Bank|10|A|fusioncell power||Hfc|Charged today, spent whenever.
+Fusion Overload|5|E|fusioncell power||Mfc3 Pfc-1|Red lights, full power, no regrets.
+Plasma Grow Lamps|11|A|fusioncell soil||A{fc3:Gse4}|Midnight sun for midnight seedlings.
+Peat Carbon Bank|10|A|soil||A{bc3:tok1} VT1|Carbon goes in and never comes out.
+Controlled Burn|4|E|soil|own.f|Uf Gbc6 V1|Fire, but on purpose.
+Compost Heap|8|A|soil||A{:Y2bc3}|Yesterday's plans, tomorrow's soil.
+Mycelium Web|9|A|soil||W{anytrack.so:Gse2}|Underground, everyone is connected.
+Grid Authority|16|B|power||VS2{p:1}|Every plant reports to the same desk.
+Fusion Research Supercomputer|24|B|science power|own.p|D4 V2|It thinks faster than it cools.
+Heated Greenhouse Domes|18|B|soil power|own.p|Pse3 Tso|Tomatoes in winter, courtesy of the reactor.
+Fusion Suburb|24|B|settlement power|own.p2|Lz|Quiet streets, humming walls.
+Hydro Cascade Dam|18|B|power||Lw Pfc2|Every step of the river turns a turbine.
+Rain Garden Network|8|B|soil||Lw|Every gutter leads to a garden.
+Flooded Quarry|10|E|recycling||Lw Gsa1|The pit filled up and the frogs moved in.
+Cooling Lake Wetlands|12|B|power fusioncell|own.p|Lw Gfc3|Warm water, very happy reeds.
+Bog Rewetting Works|12|A|soil||A{bc7:Lw}|Block the drains and let the bog breathe.
+Heron Sanctuary|10|A|wildlife||W{any.w:Gcr2}|Stand still long enough and the herons return.`.split('\n').map(l=>{const[n,c,y,s,q,f,fl]=l.split('|');return{n,c:+c,y,s:s.split(' ').filter(Boolean),q,f:f.split(' ').filter(Boolean),fl}});
 const D=[[1,0],[1,-1],[0,-1],[-1,0],[-1,1],[0,1]];
 const shuf=a=>a.map(x=>[Math.random(),x]).sort((a,b)=>a[0]-b[0]).map(x=>x[1]);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -334,7 +359,9 @@ $('#app').innerHTML=`<div id="stage"><div id="mist"></div><svg id="bd" viewBox="
 
 /* ---------- RULES ---------- */
 const nb=c=>D.map(d=>G.map[(c.q+d[0])+','+(c.r+d[1])]).filter(Boolean);
-const valid=t=>{let v=G.cells.filter(c=>t=='r'?c.t=='R':!c.t);if(t=='s')v=v.filter(c=>!nb(c).some(n=>n.t=='s')); // a Settlement can't touch another Settlement
+const valid=(t,p)=>{if(t=='u'){const o=(p||G.ps[G.cur]||{}).i;return G.cells.filter(c=>c.t=='f'&&c.o===o)} // u = one of your own Forests (Controlled Burn removes it)
+ if(t=='z')t='s'; // z = Fusion Suburb: placed like a Settlement
+ let v=G.cells.filter(c=>t=='r'?c.t=='R':!c.t);if(t=='s')v=v.filter(c=>!nb(c).some(n=>n.t=='s')); // a Settlement can't touch another Settlement
  if(t=='c'){const w=v.filter(c=>nb(c).some(n=>n.t=='f'));if(w.length)return w}return v};
 const myTurn=()=>G&&G.phase==='play'&&G.cur===ME&&G.ps[ME]&&!G.ps[ME].bot;
 const busy=()=>!G||G.pend.length>0||!myTurn()||G.over||!!(G.ps[ME].draft&&G.ps[ME].draft.length);
@@ -345,25 +372,32 @@ const disc=(p,cd)=>discList(p,cd).reduce((d,x)=>d+x.v,0);
 const cost=(p,cd)=>Math.max(0,cd.c-disc(p,cd));
 const ownT=(p,t)=>G.cells.filter(c=>c.t==t&&c.o===p.i).length;
 /* requirements: track levels (co>=8, so<=7, we>=2), synergy cards already played (syn.science>=3) or owning a Fusion Plant (own.p) */
-function reqOk(p,cd){const r=cd.q;if(!r)return true;if(r=='own.p')return ownT(p,'p')>0;const m=r.match(/^(co|so|we|syn\.(\w+))(>=|<=)(\d+)$/);if(!m)return true;
+function reqOk(p,cd){const r=cd.q;if(!r)return true;{const o=r.match(/^own\.(\w)(\d*)$/);if(o)return ownT(p,o[1])>=(+o[2]||1)} // own.p = own a Fusion Plant, own.p2 = own 2, own.f = own a Forest
+ const m=r.match(/^(co|so|we|syn\.(\w+))(>=|<=)(\d+)$/);if(!m)return true;
  const v=m[2]?(p.sp&&p.sp[m[2]])||0:G.t[m[1]],n=+m[4];return m[3]=='>='?v>=n:v<=n}
 /* a card can be played when its requirement is met, it can be paid for, and every tile it places has a free hex (a ruin card needs a ruin left) */
-const canPlay=(p,cd)=>reqOk(p,cd)&&cd.f.every(t=>t[0]!='L'||valid(t[1]).length>0)&&pay(p,cd,0);
+const canPlay=(p,cd)=>reqOk(p,cd)&&cd.f.every(t=>t[0]=='L'?valid(t[1],p).length>0:t[0]=='U'?valid('u',p).length>0:true)&&pay(p,cd,0);
 const TR0=10; // everyone starts with this terraform rating; only TR gained above it scores victory points
-const score=p=>p.tr-TR0+p.vp+cardVP(p)+G.cells.reduce((s,c)=>c.o===p.i?s+(c.t=='s'?nb(c).filter(n=>n.t=='f'||n.t=='w').length:c.t=='c'?nb(c).filter(n=>n.t=='f'||n.t=='w').length:0):s,0);
+const score=p=>p.tr-TR0+p.vp+cardVP(p)+G.cells.reduce((s,c)=>c.o===p.i?s+(c.t=='s'?nb(c).filter(n=>n.t=='f'||n.t=='w').length+(c.pb?2*nb(c).filter(n=>n.t=='p').length:0):c.t=='c'?nb(c).filter(n=>n.t=='f'||n.t=='w').length:0):s,0);
 const over=()=>G.t.co==0&&G.t.so>=14&&G.t.we>=9;
 const log=s=>{G.log.unshift(s);G.log.length=Math.min(G.log.length,3)};
+/* a card name in "The returning world": coloured and clickable; the click shows the card big until you click again */
+const clink=id=>`<span class="lgc" onclick="logCard(${id})">${esc(CARDS[id].n)}</span>`;
+function logCard(id){const cd=CARDS[id];if(!cd||!G)return;document.querySelector('.lgv')?.remove();const el=document.createElement('div');el.className='lgv';el.title='Click to close';
+ el.innerHTML=`<div class="pcw">${cardHTML(cd,G.ps[ME]||{c:{n:''}})}</div>`;el.onclick=()=>el.remove();document.body.append(el)}
 /* game-end points printed on cards: VS{syn.science:2} = 1 per 2 Science cards played, VS{f:3} = 1 per 3 Forests owned, VT2 = 1 per 2 tokens on the card */
 function cardVP(p){let v=0;for(const[id,f]of[...p.tab.map(id=>[id,CARDS[id].f]),['corp',corpFx(p)]])for(const t of f){let m;
- if(m=t.match(/^VS\{(.+):(\d+)\}$/)){const k=m[1],n=k.startsWith('syn.')?(p.sp[k.slice(4)]||0):ownT(p,k);v+=Math.floor(n/+m[2])}
+ if(m=t.match(/^VS(\d*)\{(.+):(\d+)\}$/)){const k=m[2],n=k.startsWith('syn.')?(p.sp[k.slice(4)]||0):ownT(p,k);v+=(+m[1]||1)*Math.floor(n/+m[3])}
+ else if(t=='VC')v+=(G.t.co==0?1:0)+(G.t.so>=14?1:0)+(G.t.we>=9?2:0) // Climate Observatory
  else if(m=t.match(/^VT(\d+)$/))v+=Math.floor(((p.tok||{})[id]||0)/+m[1])}return v}
 /* the deck: when it runs out, the discard pile (cards not kept from the 5 seen each generation) is shuffled back in */
 const deal1=()=>{if(!G.deck.length&&G.disc&&G.disc.length){G.deck=shuf(G.disc);G.disc=[];log('The discard pile is shuffled into the deck')}return G.deck.pop()};
 /* tile limits: you can have at most this many Settlements / Wildlife Corridors. Counts tiles you own + cards in your hand and draft that place one.
    The more you have, the rarer those cards get when YOU draw: 0 → normal, 1 → 2/3 chance, 2 → 1/3, 3 → never. A skipped card goes to the bottom of the deck for others. */
 const TILE_CAP={s:3,c:3};
-const capHave=(p,t)=>ownT(p,t)+[...p.hand,...(p.draft||[])].filter(id=>CARDS[id].f.includes('L'+t)).length;
-const keepOdds=(p,id)=>{let k=1;for(const t in TILE_CAP)if(CARDS[id].f.includes('L'+t))k=Math.min(k,Math.max(0,TILE_CAP[t]-capHave(p,t))/TILE_CAP[t]);return k};
+const placesT=(id,t)=>CARDS[id].f.includes('L'+t)||(t=='s'&&CARDS[id].f.includes('Lz')); // Fusion Suburb (Lz) counts as a Settlement
+const capHave=(p,t)=>ownT(p,t)+[...p.hand,...(p.draft||[])].filter(id=>placesT(id,t)).length;
+const keepOdds=(p,id)=>{let k=1;for(const t in TILE_CAP)if(placesT(id,t))k=Math.min(k,Math.max(0,TILE_CAP[t]-capHave(p,t))/TILE_CAP[t]);return k};
 const deal=p=>{if(!p)return deal1();const skip=[];let c=null,n=G.deck.length+((G.disc&&G.disc.length)||0);
  while(n-->0){const d=deal1();if(d==null)break;if(Math.random()<keepOdds(p,d)){c=d;break}skip.push(d)}G.deck.unshift(...skip);return c};
 const draw=(p,n)=>{const h=p.hand.length;while(n-->0){const c=deal(p);if(c==null)break;p.hand.push(c)}if(!p.bot&&G&&G.ps[ME]===p)deckAnim(p.hand.length-h)};
@@ -379,7 +413,7 @@ function track(p,t){let m=false;if(t=='co'){if(G.t.co>0){G.t.co--;p.tr++;m=true}
 /* triggers on Active cards and corporations: W{play.industry:Gcr2} etc. src = the card that caused it (a card never triggers itself). track.so = you raise Soil */
 function fire(ev,a,src){for(const q of G.ps){if(!q)continue;for(const[id,f]of[...q.tab.map(id=>[id,CARDS[id].f]),['corp',corpFx(q)]]){if(id===src)continue;for(const t of f){if(!t.startsWith('W{'))continue;
  const[w,g]=t.slice(2,-1).split(':'),[k,x]=w.split('.');
- const hit=k=='play'?q===a&&ev.k=='play'&&(x=='E'?ev.cd.y=='E':ev.cd.s.includes(x)):k=='place'?q===a&&ev.k=='place'&&ev.t==x:k=='any'?ev.k=='place'&&ev.t==x:k=='anytrack'?ev.k=='track'&&ev.t==x:k=='track'?q===a&&ev.k=='track'&&ev.t==x:false;
+ const hit=k=='play'?q===a&&ev.k=='play'&&(x=='E'?ev.cd.y=='E':ev.cd.s.includes(x)):k=='place'?q===a&&ev.k=='place'&&ev.t==x:k=='any'?ev.k=='place'&&ev.t==x:k=='anytrack'?ev.k=='track'&&ev.t==x:k=='track'?q===a&&ev.k=='track'&&ev.t==x:k=='rival'?q!==a&&ev.k=='play'&&ev.cd.s.includes(x):false;
  if(hit)run(q,g.split(','),id)}}}}
 /* cards that hit a rival: Q steals, X takes resources away, Z takes production away. You choose the rival; bots pick the one with the most */
 function rival(p,a,r,n){const rs=G.ps.filter(x=>x&&x!==p);if(!rs.length)return;
@@ -393,20 +427,36 @@ function run(p,f,id){for(const k of f){const a=k[0],b=k.slice(1);
  else if(a=='P')p.pr[b.slice(0,2)]+=+b.slice(2);
  else if(a=='G'){const m=b.match(/^(\w\w)(-?\d+)(\/t)?$/);p.res[m[1]]+=+m[2]*(m[3]?G.cells.filter(c=>c.t&&c.t!='R'&&c.o===p.i).length:1)}
  else if(a=='T')track(p,b);else if(a=='L')q(p,b);else if(a=='D')draw(p,+b);else if(a=='V'&&/^-?\d+$/.test(b))p.vp+=+b;
- else if(a=='Q'||a=='X'||a=='Z')rival(p,a,b.slice(0,2),+b.slice(2))}}
+ else if(a=='Q'||a=='X'||a=='Z')rival(p,a,b.slice(0,2),+b.slice(2))
+ else if(a=='U')q(p,'u') // Uf: remove one of your Forests
+ else if(a=='M'){const r=b.slice(0,2);p.res[r]+=+b.slice(2)*Math.max(0,p.pr[r])} // Mfc3: gain 3x your production
+ else if(a=='B')blackout(p,b) // Bfc: every rival loses all of it, you gain half
+ else if(a=='S')seek(p,b) // Sw: take the next card from the deck that places that tile
+ else if(a=='F')gamble(p,b) // Fscience.cr2: draw 1, keep it if Science, otherwise discard it for 2 Cr
+ else if(a=='Y'){const m=b.match(/^(\d+)(\w\w)(\d+)$/);compost(p,+m[1],m[2],+m[3])}}} // Y2bc3: discard up to 2 cards, 3 Biochar each
+/* new card effects (Grid Blackout, Remote Sensing Station, Field Laboratory, Compost Heap) */
+function blackout(p,r){let n=0;for(const t of G.ps)if(t&&t!==p){n+=t.res[r];t.res[r]=0}p.res[r]+=Math.floor(n/2);log(`${lname(p)}: blackout, rivals lost ${n} ${R[r]}`)}
+const placesTile=(id,t)=>CARDS[id].f.some(x=>x=='L'+t||x.includes(':L'+t+'}')||x.includes(':L'+t+','));
+function seek(p,t){for(const pile of[G.deck,G.disc])for(let i=pile.length-1;i>=0;i--)if(placesTile(pile[i],t)){const id=pile.splice(i,1)[0];p.hand.push(id);log(`${lname(p)} found ${clink(id)}`);if(!p.bot&&G.ps[ME]===p)deckAnim(1);return}}
+function gamble(p,b){const[x,g]=b.split('.'),c=deal1();if(c==null)return;if(CARDS[c].s.includes(x)){p.hand.push(c);if(!p.bot&&G.ps[ME]===p)deckAnim(1);log(`${lname(p)} kept ${clink(c)}`)}else{G.disc.push(c);p.res[g.slice(0,2)]+=+g.slice(2);log(`${lname(p)} discarded ${clink(c)}`)}}
+function compost(p,n,r,v){if(!p.hand.length)return;if(p.bot){const ids=[...p.hand].sort((a,b)=>bv(p,a)-bv(p,b)).slice(0,Math.min(n,Math.max(0,p.hand.length-3)));compostDo(p,ids,r,v)}else G.pend.push({dc:n,r,v})}
+function compostDo(p,ids,r,v){for(const id of ids){const i=p.hand.indexOf(id);if(i>=0){p.hand.splice(i,1);G.disc.push(id);p.res[r]+=v}}if(ids.length)log(`${lname(p)} composted ${ids.length} card${ids.length>1?'s':''}`)}
 function place(p,c,t){
- if(t=='x'){c.t='R';c.o=null} // a bomb: the hex becomes a Ruin that nobody owns
+ if(t=='u'){c.t=null;c.o=null} // Controlled Burn: your Forest is removed, the hex is empty again
+ else if(t=='x'){c.t='R';c.o=null} // a bomb: the hex becomes a Ruin that nobody owns
  else if(t=='r'){c.t=null;p.res.sa+=3;fire({k:'place',t},p)}
- else{c.t=t;c.o=p.i;
+ else{if(t=='z'){c.pb=1;t='s'} // Fusion Suburb: a Settlement that also scores 2 VP per touching Fusion Plant
+  c.t=t;c.o=p.i;
   if(t=='f'){track(p,'co');p.res.se+=2*nb(c).filter(n=>n.t=='w').length}
   if(t=='w')track(p,'we');
   if(t=='p'){p.pr.fc++;if(nb(c).some(n=>n.t=='s'))p.pr.cr++}
   fire({k:'place',t},p)}
- fx(c,t);sfx(t=='x'?'r':t);log(`${lname(p)}: ${LN[t]}`);render()}
+ fx(c,t);sfx(t=='x'||t=='u'?'r':t);log(`${lname(p)}: ${LN[t]}`);render()}
 function play(p,hi,plan){const id=p.hand[hi],cd=CARDS[id];pay(p,cd,1,plan);p.hand.splice(hi,1);if(cd.y!='E')p.tab.push(id);else(p.ev||(p.ev=[])).push(id); // p.ev = your played Events, only for showing them
+ (p.po||(p.po=[])).push(id); // p.po = every card you played, in the order you played them (for the player profile)
  for(const k of cd.s)p.sp[k]=(p.sp[k]||0)+1; // synergy cards played, for requirements and scoring
  G.pl=[...(G.pl||[]).slice(-7),{s:G.pseq=(G.pseq||0)+1,p:p.i,id}]; // recent plays (shared online), so other players can be shown the card
- log(`${lname(p)} played ${cd.n}`);sfx('card');run(p,cd.f.filter(t=>!/^([AWK]\{|VS|VT)/.test(t)),id);fire({k:'play',cd},p,id)}
+ log(`${lname(p)} played ${clink(id)}`);sfx('card');run(p,cd.f.filter(t=>!/^([AWK]\{|VS|VT)/.test(t)),id);fire({k:'play',cd},p,id)}
 function act(p,id){if(p.used.includes(id)||!canAct(p,id))return;const a=aparse(id);for(const x of a.c)p.res[x.slice(0,2)]-=+x.slice(2);p.used.push(id);run(p,a.g,id);sfx('card')}
 const STD={
 f:{l:'8 Seeds → Forest',ok:p=>p.res.se>=8,go:p=>{p.res.se-=8;q(p,'f')}},
@@ -419,7 +469,7 @@ function val(cd){const L=Math.min(7,Math.max(1,13-G.gen));let v=0;
   if(k.startsWith('A{'))v+=L*.9;else if(k.startsWith('W{'))v+=L*.7;else if(k.startsWith('K{'))v+=parseInt(k.split(':')[1])*(k.includes('all')?1.4:.6)*L*.4;
   else if(k.startsWith('VS'))v+=6;else if(k.startsWith('VT'))v+=3;
   else if(a=='P')v+=W[b.slice(0,2)]*n*L*.55;else if(a=='G')v+=W[b.slice(0,2)]*n*(b.endsWith('/t')?5:1)*.8;
-  else if(a=='T')v+=(b=='co'?G.t.co>0:b=='so'?G.t.so<14:G.t.we<9)?5:0;else if(a=='L')v+={f:5,w:5,s:4,p:3,c:2.5,r:2,x:1}[b];else if(a=='D')v+=+b*1.5;else if(a=='V')v+=+b*3;
+  else if(a=='T')v+=(b=='co'?G.t.co>0:b=='so'?G.t.so<14:G.t.we<9)?5:0;else if(a=='L')v+={f:5,w:5,s:4,p:3,c:2.5,r:2,x:1,z:5}[b];else if(a=='D')v+=+b*1.5;else if(a=='V')v+=+b*3;
   else if(a=='Q'||a=='X'||a=='Z')v+=W[b.slice(0,2)]*n*(a=='Z'?2:.7)+1;else v+=1}
  return v}
 /* a bot keeps the best cards it sees: 5 of 10 at the start, 3 of 5 each generation (p.keep says how many) */
@@ -428,8 +478,9 @@ function botDraft(p){keepDraft(p,[...p.draft].sort((a,b)=>bv(p,b)-bv(p,a)).slice
 const DRAFT_CR=2; // Credits for each card you leave in a generation draft (not in the starting 10 → 5)
 const skipOk=p=>(p.keep||3)===3;
 function keepDraft(p,keep){if(skipOk(p))p.res.cr+=DRAFT_CR*Math.max(0,Math.min(3,p.draft.length)-keep.length);p.hand.push(...keep);G.disc.push(...p.draft.filter(x=>!keep.includes(x)));p.draft=null}
-function bpick(p,t){let best,bs=-9;for(const c of valid(t)){const n=nb(c);let s=Math.random()*1.5;
- if(t=='s')s+=n.filter(x=>x.t=='f'||x.t=='w').length*2;
+function bpick(p,t){let best,bs=-9;for(const c of valid(t,p)){const n=nb(c);let s=Math.random()*1.5;
+ if(t=='s'||t=='z')s+=n.filter(x=>x.t=='f'||x.t=='w').length*2+(t=='z'?n.filter(x=>x.t=='p').length*2:0);
+ else if(t=='u')s-=n.filter(x=>(x.t=='s'||x.t=='c')&&x.o===p.i).length*3;
  else if(t=='f'||t=='w')s+=n.filter(x=>x.t=='s'&&x.o===p.i).length*2.5+n.filter(x=>x.t=='s').length;
  else if(t=='c')s+=n.filter(x=>x.t=='f').length;else if(t=='r')s+=n.filter(x=>!x.t).length*.3;else if(t=='x')s+=n.filter(x=>x.o!=null&&x.o!==p.i).length*2;
  if(s>bs){bs=s;best=c}}return best}
@@ -479,7 +530,13 @@ function choose(ci){if(!G||G.phase!=='pick'||G.pick!==ME||!G.offer.includes(ci))
 function adv(){while(G.pend.length&&typeof G.pend[0]=='string'&&!valid(G.pend[0]).length)G.pend.shift();render()}
 function clk(i){if(!myTurn()||G.over||!G.pend.length)return;const c=G.cells[i],t=G.pend[0];if(typeof t!='string'||!valid(t).includes(c))return;G.pend.shift();UNDO=null;place(G.ps[ME],c,t);adv()}
 /* a card that hits a rival: you pick which rival */
-function uiRival(i){if(!myTurn()||G.over)return;const it=G.pend[0];if(!it||typeof it=='string'||!G.ps[i]||i===ME)return;G.pend.shift();UNDO=null;hitRival(G.ps[ME],it.rv,it.r,it.n,G.ps[i]);adv()}
+function uiRival(i){if(!myTurn()||G.over)return;const it=G.pend[0];if(!it||typeof it=='string'||!it.rv||!G.ps[i]||i===ME)return;G.pend.shift();UNDO=null;hitRival(G.ps[ME],it.rv,it.r,it.n,G.ps[i]);adv()}
+/* Compost Heap: choose up to n cards from your hand to discard */
+let CSEL=[];
+function compostUI(){const p=G.ps[ME],it=G.pend[0];if(!it||!it.dc||!myTurn())return;CSEL=CSEL.filter(x=>p.hand.includes(x));
+ modal(`<div class="drf"><h2>Compost up to ${it.dc} card${it.dc>1?'s':''}</h2><p>Each card you choose goes to the discard pile and gives you ${it.v} ${resIcon(it.r)}.</p><div class="pcg">${p.hand.map(id=>`<div class="pcw${CSEL.includes(id)?' sel':''}" onclick="cpTog(${id})">${cardHTML(CARDS[id],p,{})}</div>`).join('')}</div><button class="pri" onclick="cpDo()">Compost ${CSEL.length}${CSEL.length?` · +${CSEL.length*it.v}${resIcon(it.r)}`:''}</button></div>`)}
+function cpTog(id){const it=G.pend[0];if(!it||!it.dc)return;if(CSEL.includes(id))CSEL=CSEL.filter(x=>x!==id);else if(CSEL.length<it.dc)CSEL.push(id);compostUI()}
+function cpDo(){const p=G.ps[ME],it=G.pend[0];if(!it||!it.dc||!myTurn())return;G.pend.shift();UNDO=null;compostDo(p,CSEL,it.r,it.v);CSEL=[];closeModal();adv()}
 /* at the start you see 10 cards and keep 5, each generation you see 5 and keep 3; the rest go to the discard pile */
 let DSEL=[];
 function draftUI(){const p=G.ps[ME];if(!p.draft||!p.draft.length)return;const need=Math.min(p.keep||3,p.draft.length);DSEL=DSEL.filter(x=>p.draft.includes(x));
@@ -549,7 +606,10 @@ const order=()=>{const n=G.ps.length,s=(G.gen-1)%n;return G.ps.map((_,i)=>G.ps[(
 const pname=p=>p.bot?p.c.n.split(' ')[0]:p.name||myName();
 /* name shown in "The returning world": the player's in-game name, same as on the player panels */
 const lname=p=>p.bot?(p.name?esc(p.name)+' (bot)':'Bot '+p.i):esc(p.name||myName());
-function income(){for(const p of G.ps){const r=p.res;r.bc+=r.fc*(p.c.fcbc||1);r.fc=0;r.cr+=p.tr+p.pr.cr;for(const k of['sa','re','se','fc','bc'])r[k]=Math.max(0,r[k]+p.pr[k]);p.used=[];
+function income(){for(const p of G.ps){const r=p.res;if(!p.tab.some(id=>CARDS[id].f.includes('Hfc'))){r.bc+=r.fc*(p.c.fcbc||1);r.fc=0} // Battery Bank (Hfc) keeps your Fusion Cells
+  r.cr+=p.tr+p.pr.cr;for(const k of['sa','re','se','fc','bc'])r[k]=Math.max(0,r[k]+p.pr[k]);
+  for(const id of p.tab)for(const t of CARDS[id].f){const m=t.match(/^I(\w)(\d+)(\w\w)$/);if(m)r[m[3]]+=Math.min(+m[2],G.cells.filter(c=>c.t==m[1]).length)} // Iw4fc: +1 per Wetland on the board, max 4
+  p.used=[];
   p.draft=[];for(let i=0;i<(p.c.see||5);i++){const c=deal(p);if(c!=null)p.draft.push(c)}p.keep=3;if(p.bot)botDraft(p)}
  G.gen++;log(`Generation ${G.gen} begins`);sfx('gen')}
 /* pass the turn to the next player; after the last one, income arrives and a new generation starts. Returns false when the game ends */
@@ -748,7 +808,7 @@ function drawCell(c){const k=(c.t||'')+(c.o??'');if(c.dk===k)return;const first=
 /* best places: a Forest next to a Wetland or your own Wildlife Corridor; a Corridor touching a Wetland or 2+ Forests. If there are none, every legal place glows */
 function best(t,v){const n=c=>nb(c),f=t=='f'?v.filter(c=>n(c).some(x=>x.t=='w'||(x.t=='c'&&x.o===ME))):t=='c'?v.filter(c=>n(c).filter(x=>x.t=='f'||x.t=='w').length>=2):v;return f.length?f:v}
 function mark(){const v=typeof G.pend[0]=='string'&&myTurn()?valid(G.pend[0]):[],bv=v.length?best(G.pend[0],v):[];G.cells.forEach(c=>{const e=document.getElementById('h'+c.id);e.classList.toggle('ok',bv.includes(c));e.classList.toggle('ok2',v.includes(c)&&!bv.includes(c))})}
-function fx(c,t){const g=document.createElementNS(NS,'g'),col={w:'#c7ecff',f:'#a5df84',s:'#f3dcae',p:'#b4eeff',c:'#bfe99a',r:'#d3c3b0',x:'#ffb36b'}[t];g.setAttribute('transform',`translate(${c.x},${c.y})`);let h='';
+function fx(c,t){const g=document.createElementNS(NS,'g'),col={w:'#c7ecff',f:'#a5df84',s:'#f3dcae',p:'#b4eeff',c:'#bfe99a',r:'#d3c3b0',x:'#ffb36b',u:'#ffb36b',z:'#f3dcae'}[t];g.setAttribute('transform',`translate(${c.x},${c.y})`);let h='';
  if(t=='w')for(let i=0;i<3;i++)h+=`<circle class="ring" r="6" style="animation-delay:${i*.18}s"/>`;
  for(let i=0;i<9;i++){const a=i/9*6.28,d=24+Math.random()*14,w=t=='w';h+=`<circle class="pt" r="${w?2.5:2}" fill="${col}" style="--dx:${(Math.cos(a)*d).toFixed(1)}px;--dy:${(w?-20-Math.random()*20:Math.sin(a)*d*FY).toFixed(1)}px"/>`}
  g.innerHTML=h;$('#fx').appendChild(g);setTimeout(()=>g.remove(),1300)}
@@ -779,7 +839,7 @@ const TSYM={co:CO2SVG,so:LEAF,we:DROP};
 const tIcon=k=>`<span class="ts t-${k}">${TSYM[k]}</span>`;
 const CARDIC='<span class="mcard"></span>';
 const efR=(sg,n,k,prod)=>`<span class="ef"><span class="n">${sg}${n}</span>${prod?`<span class="pb" style="--c:${RCOL[k]}">${resIcon(k)}</span>`:resIcon(k)}</span>`;
-const TFILE={f:'forest',w:'wetland',s:'settlement',p:'power',c:'corridor',r:'ruin',x:'ruin'};
+const TFILE={f:'forest',w:'wetland',s:'settlement',p:'power',c:'corridor',r:'ruin',x:'ruin',u:'forest',z:'settlement'};
 const synIc=k=>`<img class="syi" src="ui/syn/${k}.svg" alt="${SYN[k]?SYN[k].n:k}" title="${SYN[k]?SYN[k].n:k}">`;
 const tileIc=t=>`<span class="tl"><img src="tile-art/${TFILE[t]}.png" alt="${LN[t]}" title="${LN[t]}"></span>`;
 const TKN='<span class="tkn" title="Token on this card"></span>';
@@ -789,24 +849,34 @@ function fx1(t){const a=t[0],b=t.slice(1);let m;
  if(a=='P'){const n=b.slice(2);return efR(n>0?'+':'',n,b.slice(0,2),1)}
  if(a=='G'){m=b.match(/^(\w\w)(-?\d+)(\/t)?$/);return m[3]?`<span class="ef"><span class="n">+${m[2]}</span>${resIcon(m[1])}<span class="tx">per tile you own</span></span>`:efR('+',m[2],m[1],0)}
  if(a=='T')return`<span class="ef"><span class="n">${b=='co'?'−':'+'}</span>${tIcon(b)}</span>`;
+ if(t=='Lz')return`<span class="ef">${tileIc('s')}<span class="tx">Place a Settlement · +2 VP per touching</span>${tileIc('p')}</span>`;
  if(a=='L')return`<span class="ef">${tileIc(b)}<span class="tx">${(b=='r'?'':'Place ')+LN[b]}</span></span>`;
  if(a=='D')return`<span class="ef"><span class="n">+${b}</span>${CARDIC}</span>`;
  if(a=='V'&&/^-?\d+$/.test(b))return`<span class="ef"><span class="n">${b}</span><span class="tx">VP</span></span>`;
  if(a=='Q'||a=='X')return`<span class="ef"><span class="tx">${a=='Q'?'Steal from a rival':'A rival loses'}</span><span class="n">${b.slice(2)}</span>${resIcon(b.slice(0,2))}</span>`;
  if(a=='Z')return`<span class="ef"><span class="tx">A rival loses</span><span class="n">−${b.slice(2)}</span><span class="pb" style="--c:${RCOL[b.slice(0,2)]}">${resIcon(b.slice(0,2))}</span></span>`;
+ if(a=='U')return`<span class="ef">${tileIc('f')}<span class="tx">Remove one of your Forests</span></span>`;
+ if(a=='M')return`<span class="ef"><span class="tx">Gain</span><span class="n">${b.slice(2)}×</span><span class="pb" style="--c:${RCOL[b.slice(0,2)]}">${resIcon(b.slice(0,2))}</span><span class="tx">production</span></span>`;
+ if(a=='B')return`<span class="ef"><span class="tx">Rivals lose all</span>${resIcon(b)}<span class="tx">· you gain half</span></span>`;
+ if(a=='S')return`<span class="ef"><span class="tx">Take the next card that places</span>${tileIc(b)}</span>`;
+ if(a=='F'){const[x,g]=b.split('.');return`<span class="ef"><span class="n">+1</span>${CARDIC}<span class="tx">keep if</span>${synIc(x)}<span class="tx">else discard:</span>${efR('+',g.slice(2),g.slice(0,2),0)}</span>`}
+ if(a=='Y'){const m=b.match(/^(\d+)(\w\w)(\d+)$/);return`<span class="ef"><span class="tx">Discard up to</span><span class="n">${m[1]}</span>${CARDIC}<span class="tx">:</span>${efR('+',m[3],m[2],0)}<span class="tx">each</span></span>`}
+ if(a=='H')return`<span class="ef"><span class="tx">Your</span>${resIcon(b)}<span class="tx">no longer turn into</span>${resIcon('bc')}</span>`;
+ if(m=t.match(/^I(\w)(\d+)(\w\w)$/))return`<span class="ef"><span class="tx">Each generation</span><span class="n">+1</span>${resIcon(m[3])}<span class="tx">per</span>${tileIc(m[1])}<span class="tx">on the board (max ${m[2]})</span></span>`;
+ if(t=='VC')return`<span class="ef"><span class="tx">Game end</span><span class="n">1</span><span class="tx">VP per full track,</span>${tIcon('we')}<span class="tx">counts 2</span></span>`;
  if(t.startsWith('A{')){const[c,g]=t.slice(2,-1).split(':');return`<span class="ef"><span class="tx">Action</span>${c?c.split(',').map(x=>`<span class="n">${x.slice(2)}</span>${resIcon(x.slice(0,2))}`).join(''):''}<span class="tx">→</span>${g.split(',').map(fx1).join('')}</span>`}
  if(t.startsWith('W{')){const[w,g]=t.slice(2,-1).split(':'),[k,x]=w.split('.');
-  const l=k=='play'?(x=='E'?'<span class="tx">When you play an Event</span>':`<span class="tx">When you play</span>${synIc(x)}`):k=='place'?`<span class="tx">When you place</span>${tileIc(x)}`:k=='any'?`<span class="tx">When anyone places</span>${tileIc(x)}`:`<span class="tx">When anyone ${x=='co'?'lowers':'raises'}</span>${tIcon(x)}`;
+  const l=k=='play'?(x=='E'?'<span class="tx">When you play an Event</span>':`<span class="tx">When you play</span>${synIc(x)}`):k=='place'?`<span class="tx">When you place</span>${tileIc(x)}`:k=='any'?`<span class="tx">When anyone places</span>${tileIc(x)}`:k=='rival'?`<span class="tx">When a rival plays</span>${synIc(x)}`:`<span class="tx">When anyone ${x=='co'?'lowers':'raises'}</span>${tIcon(x)}`;
   return`<span class="ef">${l}<span class="tx">:</span>${g.split(',').map(fx1).join('')}</span>`}
  if(m=t.match(/^K\{(\w+):(\d+)\}$/))return`<span class="ef">${m[1]=='all'?'<span class="tx">All your cards</span>':`${synIc(m[1])}<span class="tx">cards</span>`}<span class="tx">cost</span><span class="n">−${m[2]}</span></span>`;
- if(m=t.match(/^VS\{(.+):(\d+)\}$/))return`<span class="ef"><span class="tx">Game end</span><span class="n">1</span><span class="tx">VP per</span><span class="n">${m[2]}</span>${m[1].startsWith('syn.')?synIc(m[1].slice(4))+'<span class="tx">played</span>':tileIc(m[1])}</span>`;
+ if(m=t.match(/^VS(\d*)\{(.+):(\d+)\}$/))return`<span class="ef"><span class="tx">Game end</span><span class="n">${m[1]||1}</span><span class="tx">VP per</span>${+m[3]>1?`<span class="n">${m[3]}</span>`:''}${m[2].startsWith('syn.')?synIc(m[2].slice(4))+'<span class="tx">played</span>':tileIc(m[2])}</span>`;
  if(m=t.match(/^VT(\d+)$/))return`<span class="ef"><span class="tx">Game end</span><span class="n">1</span><span class="tx">VP per</span>${m[1]>1?`<span class="n">${m[1]}</span>`:''}${TKN}</span>`;
  return''}
-function fxHTML(cd){return cd.f.map(fx1).join('')}
+function fxHTML(cd){const h=cd.f.map(fx1).join('');return cd.y=='A'?h.split('<span class="tx">Game end</span>').join(''):h} // Active cards don't show the "Game end" label
 /* requirement shown on the card picture; red when you don't meet it */
-function reqHTML(cd){const r=cd.q;if(!r)return'';if(r=='own.p')return`<span class="tx">Own a</span>${tileIc('p')}`;const m=r.match(/^(co|so|we|syn\.(\w+))(>=|<=)(\d+)$/);if(!m)return'';
+function reqHTML(cd){const r=cd.q;if(!r)return'';{const o=r.match(/^own\.(\w)(\d*)$/);if(o)return`<span class="tx">Own ${+o[2]>1?o[2]:'a'}</span>${tileIc(o[1])}`}const m=r.match(/^(co|so|we|syn\.(\w+))(>=|<=)(\d+)$/);if(!m)return'';
  if(m[2])return`<span class="n">${m[4]}</span>${synIc(m[2])}<span class="tx">played</span>`;return`${tIcon(m[1])}<span class="tx">${m[3]=='>='?'min':'max'}</span><span class="n">${m[4]}${m[1]=='so'?'%':''}</span>`}
-function reqTxt(cd){const r=cd.q;if(!r)return'';if(r=='own.p')return'Requires: you own a Fusion Plant';const m=r.match(/^(co|so|we|syn\.(\w+))(>=|<=)(\d+)$/);if(!m)return'';
+function reqTxt(cd){const r=cd.q;if(!r)return'';{const o=r.match(/^own\.(\w)(\d*)$/);if(o)return`Requires: you own ${+o[2]>1?o[2]+' '+LN[o[1]]+'s':'a '+LN[o[1]]}`}const m=r.match(/^(co|so|we|syn\.(\w+))(>=|<=)(\d+)$/);if(!m)return'';
  if(m[2])return`Requires: ${m[4]} ${SYN[m[2]].n} cards played`;const nm={co:'CO₂',so:'Soil',we:'Wetlands'}[m[1]];return`Requires: ${nm} ${m[4]}${m[1]=='so'?'%':''} or ${m[3]=='>='?'more':'less'}`}
 /* card design: spine (type + tags), framed arch photo, name plaque, effect panel, description, wreath for VP */
 const WREATH='<svg viewBox="0 0 48 48" aria-hidden="true"><path d="M21.77 39.84 L20.49 39.61 L19.23 39.27 L18.01 38.83 L16.82 38.30 L15.68 37.67 L14.60 36.94 L13.57 36.14 L12.62 35.25 L11.74 34.28 L10.95 33.25 L10.24 32.16 L9.62 31.01 L9.10 29.82 L8.67 28.59 L8.35 27.33 L8.13 26.04 L8.02 24.74 L8.01 23.44 L8.11 22.14 L8.31 20.86 L8.62 19.59 L9.03 18.35 L9.54 17.15 L10.14 16.00 L10.84 14.90 L11.62 13.86 L12.49 12.89 L13.43 11.99 L14.45 11.17 L15.52 10.43" fill="none" stroke="#2b2300" stroke-width="1.4" stroke-linecap="round"/><path d="M26.23 39.84 L27.51 39.61 L28.77 39.27 L29.99 38.83 L31.18 38.30 L32.32 37.67 L33.40 36.94 L34.43 36.14 L35.38 35.25 L36.26 34.28 L37.05 33.25 L37.76 32.16 L38.38 31.01 L38.90 29.82 L39.33 28.59 L39.65 27.33 L39.87 26.04 L39.98 24.74 L39.99 23.44 L39.89 22.14 L39.69 20.86 L39.38 19.59 L38.97 18.35 L38.46 17.15 L37.86 16.00 L37.16 14.90 L36.38 13.86 L35.51 12.89 L34.57 11.99 L33.55 11.17 L32.48 10.43" fill="none" stroke="#2b2300" stroke-width="1.4" stroke-linecap="round"/><ellipse cx="21.22" cy="39.76" rx="4.4" ry="2.2" transform="rotate(162.0 21.22 39.76)" fill="#D9AE2A" stroke="#2b2300" stroke-width=".7"/><ellipse cx="26.78" cy="39.76" rx="4.4" ry="2.2" transform="rotate(-162.0 26.78 39.76)" fill="#D9AE2A" stroke="#2b2300" stroke-width=".7"/><ellipse cx="15.40" cy="37.49" rx="4.4" ry="2.2" transform="rotate(184.5 15.40 37.49)" fill="#D9AE2A" stroke="#2b2300" stroke-width=".7"/><ellipse cx="32.60" cy="37.49" rx="4.4" ry="2.2" transform="rotate(-184.5 32.60 37.49)" fill="#D9AE2A" stroke="#2b2300" stroke-width=".7"/><ellipse cx="10.89" cy="33.18" rx="4.4" ry="2.2" transform="rotate(207.0 10.89 33.18)" fill="#D9AE2A" stroke="#2b2300" stroke-width=".7"/><ellipse cx="37.11" cy="33.18" rx="4.4" ry="2.2" transform="rotate(-207.0 37.11 33.18)" fill="#D9AE2A" stroke="#2b2300" stroke-width=".7"/><ellipse cx="8.38" cy="27.46" rx="4.4" ry="2.2" transform="rotate(229.5 8.38 27.46)" fill="#D9AE2A" stroke="#2b2300" stroke-width=".7"/><ellipse cx="39.62" cy="27.46" rx="4.4" ry="2.2" transform="rotate(-229.5 39.62 27.46)" fill="#D9AE2A" stroke="#2b2300" stroke-width=".7"/><ellipse cx="8.24" cy="21.22" rx="4.4" ry="2.2" transform="rotate(252.0 8.24 21.22)" fill="#D9AE2A" stroke="#2b2300" stroke-width=".7"/><ellipse cx="39.76" cy="21.22" rx="4.4" ry="2.2" transform="rotate(-252.0 39.76 21.22)" fill="#D9AE2A" stroke="#2b2300" stroke-width=".7"/><ellipse cx="10.51" cy="15.40" rx="4.4" ry="2.2" transform="rotate(274.5 10.51 15.40)" fill="#D9AE2A" stroke="#2b2300" stroke-width=".7"/><ellipse cx="37.49" cy="15.40" rx="4.4" ry="2.2" transform="rotate(-274.5 37.49 15.40)" fill="#D9AE2A" stroke="#2b2300" stroke-width=".7"/><ellipse cx="14.82" cy="10.89" rx="4.4" ry="2.2" transform="rotate(297.0 14.82 10.89)" fill="#D9AE2A" stroke="#2b2300" stroke-width=".7"/><ellipse cx="33.18" cy="10.89" rx="4.4" ry="2.2" transform="rotate(-297.0 33.18 10.89)" fill="#D9AE2A" stroke="#2b2300" stroke-width=".7"/><circle cx="24" cy="24" r="10.6" fill="#2f3d36" stroke="#2b2300" stroke-width="1.4"/><circle cx="24" cy="24" r="8.6" fill="none" stroke="#E0A81C" stroke-width=".8"/></svg>';
@@ -841,8 +911,10 @@ function cardsPage(){$('#set').hidden=true;const P0={c:{n:''}},TY={B:'Build',A:'
  <div class="cpr">${Object.keys(TY).map(k=>`<button class="cpb ty${CF.y.has(k)?' on':''}" style="--tc:${TC[k]}" onclick="cfTog('y','${k}')"><i></i><span>${TY[k]}</span></button>`).join('')}${CF.s.size||CF.y.size?'<button class="cpb clr" onclick="CF={s:new Set(),y:new Set()};cardsPage()">Clear filters</button>':''}</div></div>
  <div class="pcg">${list.length?list.map(cd=>`<div class="pcw">${cardHTML(cd,P0)}</div>`).join(''):'<div class="none">No card has all of these.</div>'}</div></div>`);dismiss()}
 function cfTog(g,k){CF[g].has(k)?CF[g].delete(k):CF[g].add(k);const sc=document.querySelector('.cpg')?.scrollTop;cardsPage();const e=document.querySelector('.cpg');if(e&&sc)e.scrollTop=sc}
+/* player profile order: the most recently played card first, whatever its type. Cards with no recorded order (older saves) go last */
+const newestFirst=p=>{const po=p.po||[],at=id=>po.lastIndexOf(id);return[...p.tab,...(p.ev||[])].map((id,k)=>[id,k]).sort((a,b)=>at(b[0])-at(a[0])||a[1]-b[1]).map(x=>x[0])};
 function viewPlayer(i,keep){if(!G||!G.ps[i])return;const p=G.ps[i];if(!keep)PF={s:new Set(),y:new Set()};PFV=()=>viewPlayer(i,1);
- modal(`<div class="pv" style="--c:${PC[p.i]}"><div class="pvh">${mono(p.c)}<div><h2>${p.c.n}</h2><small>${p.bot?'Bot':esc(p.name||myName())} · ${p.c.t} · TR ${p.tr}</small></div>${symHTML(p.i,26)}<span class="vp cvp" title="Victory points">${WREATH}<b>${score(p)}</b></span><button onclick="closeModal()">Close</button></div><div class="pvtop"><div class="pvcorp">${corpCardHTML(p.c,p.ci,true)}</div><div class="pvr">${Object.keys(R).map(k=>`<div class="r" style="--c:${RCOL[k]}">${resIcon(k)}<span>${p.res[k]}</span><i>+${k=='cr'?p.tr+p.pr.cr:p.pr[k]}</i></div>`).join('')}</div></div>${(ids=>`<h3>Played cards · ${ids.length}</h3>${pfBar(ids)}${pfGrid(p,ids)}`)([...p.tab,...(p.ev||[])])}</div>`);dismiss()}
+ modal(`<div class="pv" style="--c:${PC[p.i]}"><div class="pvh">${mono(p.c)}<div><h2>${p.c.n}</h2></div>${symHTML(p.i,26)}<span class="vp cvp" title="Victory points">${WREATH}<b>${score(p)}</b></span><button onclick="closeModal()">Close</button></div><div class="pvtop"><div class="pvcorp">${corpCardHTML(p.c,p.ci,true)}</div><div class="pvr">${Object.keys(R).map(k=>`<div class="r" style="--c:${RCOL[k]}">${resIcon(k)}<span>${p.res[k]}</span><i>+${k=='cr'?p.tr+p.pr.cr:p.pr[k]}</i></div>`).join('')}</div></div>${(ids=>`<h3>Played cards · ${ids.length}</h3>${pfBar(ids)}${pfGrid(p,ids)}`)(newestFirst(p))}</div>`);dismiss()}
 const STDRES={Seeds:'se',Biochar:'bc',Cr:'cr'};
 function stdLabel(l){const m=l.match(/^(\d+) (\w+) → (.*)$/);if(!m||!STDRES[m[2]])return l;return`<span class="sn">${m[1]}</span>${resIcon(STDRES[m[2]])}<span class="sa">→</span><span>${m[3]}</span>`}
 /* size of your Active cards: the 2 deck columns (+10 px gap) fill the space between the board's hexes and the right edge,
@@ -888,7 +960,9 @@ function renderUI(){if(!G||G.phase!=='play'||!G.ps.length)return;const p=G.ps[ME
  $('#played').innerHTML=`<div class="pile">${pl?Array.from({length:Math.min(4,pl)},()=>'<div class="cb pl"><b>Played</b></div>').join('').replace(/<b>Played<\/b><\/div>$/,'<b>Played</b><span class="pn">'+pl+'</span></div>'):'<div class="cb empty"></div>'}</div><small>${pl} played</small>`;
  $('#log').innerHTML=G.log.join('<br>');
  const a=$('#ask'),p0=G.pend[0];a.hidden=!G.pend.length||!myTurn();a.innerHTML=!G.pend.length?'':typeof p0=='string'?`Place: ${LN[p0]} · glowing hexes are the best spots, any outlined hex works${UNDO?'<button class="undo" onclick="undo()">Undo</button>':''}`
+  :p0.dc?`Compost: choose up to ${p0.dc} cards from your hand, ${p0.v} ${R[p0.r]} each<button class="undo" onclick="compostUI()">Choose cards</button>`
   :`${{Q:'Steal up to',X:'A rival loses up to',Z:'A rival loses'}[p0.rv]} ${p0.n} ${R[p0.r]}${p0.rv=='Z'?' production':''} · choose the rival:${G.ps.filter(x=>x&&x.i!==ME).map(x=>`<button class="undo" onclick="uiRival(${x.i})">${esc(pname(x))}</button>`).join('')}`;
+ if(p0&&p0.dc&&myTurn()&&document.querySelector('#modal').hidden)compostUI(); // Compost Heap opens its card picker
  if(G.cur===ME&&LASTCUR!==undefined&&LASTCUR!==ME&&myTurn())sfx('turn');LASTCUR=G.cur;
  /* your Active cards: 4 decks in a 2×2 square; each deck stacks like the old single pile (top card first). Order comes from LAY */
  layoutFix(p);const AH=(Math.max(300,innerHeight-380)-10)/2, // 2 rows of decks share the height the old pile had
@@ -955,7 +1029,7 @@ function genUpdate(b){const g=$('#gen');
  if(!g.firstElementChild)g.innerHTML=`<div class="wh" role="img">${WHEEL_SVG}</div><button class="sl" type="button" data-state="ready" title="Hold to start the next generation">${SEAL_HTML}</button>`;
  wheelSet(g.querySelector('.wh'),G.gen);
  const sl=g.querySelector('.sl');sl.dataset.state=!myTurn()?'wait':G.pend.length?'tile':'ready';sl.disabled=!!b;
- sl.querySelector('.lbl.ready').textContent=NET?'End turn':'Next generation';sl.querySelector('.lbl.tile').textContent=G.pend.length&&typeof G.pend[0]!='string'?'Choose a rival first':'Place your tile first';sl.title=NET?'Hold to end your turn':'Hold to start the next generation';
+ sl.querySelector('.lbl.ready').textContent=NET?'End turn':'Next generation';sl.querySelector('.lbl.tile').textContent=G.pend.length&&typeof G.pend[0]!='string'?(G.pend[0].dc?'Choose cards first':'Choose a rival first'):'Place your tile first';sl.title=NET?'Hold to end your turn':'Hold to start the next generation';
  if(b)holdStop();else if(!HOLD)holdClear(sl)}
 document.addEventListener('pointerdown',e=>{const b=e.target.closest&&e.target.closest('#gen .sl');if(!b||e.button||b.disabled)return;e.preventDefault();try{b.setPointerCapture(e.pointerId)}catch(_){}holdStart(b)});
 ['pointerup','pointercancel'].forEach(t=>document.addEventListener(t,holdStop));
@@ -1008,7 +1082,7 @@ const CDIAG={'nomad-caravan-union':()=>cCard('#E8871E')+cColon+cCost(2),
  'northstar-cartographers':()=>`<span class="rew"><span class="n">6</span>${cCard('#8a8f86')}</span>`+cColon+`<span class="rew"><span class="n">3</span>${cCard('#4CBB17')}</span>`,
  'rubblewright-salvors':()=>cTile('ruin',1)+cColon+cGain('sa',4)+cGain('cr',3),
  'cinderbloom-kilns':()=>cRes('fc')+cEq+`<span class="rew vi">${cRes('bc')}<span class="n">2</span></span>`,
- 'hollowfen-rangers':()=>cSyn('wildlife')+cCost(3)+cTile('corridor')+`<span class="rew"><span class="n">+1</span><span style="display:block;width:calc(34 * var(--u));height:calc(34 * var(--u))">${WREATH}</span></span>`,
+ 'hollowfen-rangers':()=>`<span class="drow">${cSyn('wildlife')+cColon+cCost(3)}</span><span class="drow">${cTile('corridor')+cColon}<span class="rew"><span class="n">+1</span><span class="wr">${WREATH}</span></span></span>`, // two rows so both effects fit the box
  'cairn-heavy-industries':()=>cTile('settlement')+cColon+cRew('sa',1),
  'lumen-institute':()=>cSyn('science')+cColon+cCost(2),
  'ironvale-foundries':()=>cSyn('industry')+cColon+cRes('sa')+cEq+`<span class="rew vi">${cRes('cr')}<span class="n">3</span></span>`,

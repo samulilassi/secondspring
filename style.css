@@ -693,6 +693,19 @@ body.lobby #cnt,body.lobby #set{z-index:60}
 .orv .pcw{--u:min(24px,3.7vh);animation:orvcard var(--ms) cubic-bezier(.2,.9,.3,1.15) both}
 .orv .pc{box-shadow:0 0 0 3px var(--c),0 18px 40px #000a}
 .orv.still .pcw{animation:none}
+/* "The returning world": clickable card names, and the card shown big after a click (click anywhere to close) */
+#sec .lgc{color:var(--lime);cursor:pointer}#sec .lgc:hover{text-decoration:underline}
+.lgv{position:fixed;inset:0;z-index:55;display:grid;place-content:center;background:rgba(8,16,13,.55);cursor:pointer}
+.lgv .pcw{--u:min(24px,3.7vh)}.lgv .pc{box-shadow:0 18px 40px #000a}
+/* corporation effect drawn in two rows (Hollowfen Rangers) */
+.corp-card .dgm:has(.drow){flex-direction:column;gap:calc(2 * var(--u))}
+.corp-card .drow{display:flex;align-items:center;justify-content:center;gap:calc(4 * var(--u))}
+.corp-card .drow img.cri{width:calc(30 * var(--u));height:calc(30 * var(--u));flex:none}
+.corp-card .drow .tile{width:calc(40 * var(--u));height:calc(36 * var(--u))}
+.corp-card .drow .op.colon{height:calc(30 * var(--u))}
+.corp-card .drow .rew .costbox{min-width:calc(44 * var(--u));height:calc(32 * var(--u))}
+.corp-card .drow .rew .n,.corp-card .drow .rew .costbox .n{font-size:calc(24 * var(--u))}
+.corp-card .drow .wr{display:block;width:calc(30 * var(--u));height:calc(30 * var(--u))}
 @keyframes orvbg{0%{opacity:0}15%{opacity:1}80%{opacity:1}100%{opacity:0}}
 @keyframes orvcard{0%{transform:translateY(40px) scale(.7);opacity:0}18%{transform:none;opacity:1}80%{transform:none;opacity:1}100%{transform:translateY(-20px) scale(.95);opacity:0}}
 
